@@ -14,7 +14,9 @@
   let isRecording  = false;
   let micStream    = null;
   let mediaRecorder = null;
-  let pendingBufs  = [];   // raw data from ondataavailable
+  let pendingBufs  = [];   // ALL raw data since session start (WebM needs full stream)
+  let flushedUpTo  = 0;    // index into pendingBufs already sent (but kept for header reuse)
+  let sentSamples  = 0;    // PCM samples already uploaded; used to slice the delta
   let chunkIndex   = 0;
   let sessionId    = null;
   let flushTimer   = null;
@@ -38,28 +40,42 @@
     return buf;
   }
 
-  async function blobToWav(blob) {
-    const raw  = await blob.arrayBuffer();
-    const ctx  = new AudioContext();
-    const ab   = await ctx.decodeAudioData(raw);
+  // Decode the full accumulated blob, resample to 16kHz mono, return all PCM samples.
+  async function decodeToSamples(blob) {
+    const raw = await blob.arrayBuffer();
+    const ctx = new AudioContext();
+    const ab  = await ctx.decodeAudioData(raw);
     ctx.close();
-    const SR   = 16000;
-    const off  = new OfflineAudioContext(1, Math.ceil(ab.duration * SR), SR);
-    const src  = off.createBufferSource();
+    const SR  = 16000;
+    const off = new OfflineAudioContext(1, Math.ceil(ab.duration * SR), SR);
+    const src = off.createBufferSource();
     src.buffer = ab; src.connect(off.destination); src.start();
-    const res  = await off.startRendering();
-    return new Blob([encodeWAV(res.getChannelData(0), SR)], { type: "audio/wav" });
+    const res = await off.startRendering();
+    return { samples: res.getChannelData(0), sr: SR };
   }
 
   // ── Flush accumulated data as one chunk ──────────────────────────────────────
   async function flushChunk() {
-    if (pendingBufs.length === 0) return;
-    const batch = pendingBufs.splice(0);          // grab & clear atomically
-    const idx   = chunkIndex++;
-    const raw   = new Blob(batch, { type: mimeType });
-    console.log(`[IntraView] Flushing chunk ${idx} (${(raw.size/1024).toFixed(1)} KB)`);
+    if (pendingBufs.length === flushedUpTo) return;   // nothing new
+
+    // Decode full blob (must start from buf[0] so WebM header is present)
+    const snapshot = pendingBufs.slice();
+    flushedUpTo    = pendingBufs.length;
+    const idx      = chunkIndex++;
+    const fullBlob = new Blob(snapshot, { type: mimeType });
+
     try {
-      const wav = await blobToWav(raw);
+      const { samples, sr } = await decodeToSamples(fullBlob);
+
+      // Slice out only the NEW samples since the last flush
+      const delta = samples.slice(sentSamples);
+      sentSamples  = samples.length;   // advance cursor for next flush
+
+      if (delta.length === 0) return;  // silence / nothing new
+
+      console.log(`[IntraView] Chunk ${idx}: ${(delta.length/sr).toFixed(1)}s of new audio`);
+
+      const wav = new Blob([encodeWAV(delta, sr)], { type: "audio/wav" });
       const res = await fetch(`${SERVER}/transcribe`, {
         method:  "POST",
         headers: { "Content-Type":"audio/wav", "X-Session-Id":sessionId, "X-Chunk-Index":String(idx) },
@@ -86,7 +102,9 @@
       ? "audio/webm;codecs=opus" : "audio/webm";
 
     pendingBufs  = [];
+    flushedUpTo  = 0;
     chunkIndex   = 0;
+    sentSamples  = 0;
     sessionId    = `iv-${Date.now()}`;
     isRecording  = true;
 
