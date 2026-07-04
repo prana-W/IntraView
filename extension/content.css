@@ -1,8 +1,3 @@
-/* ═══════════════════════════════════════════════════════════════
-   IntraView – Content Script Styles
-   Injected on https://leetcode.com/problems/*
-═══════════════════════════════════════════════════════════════ */
-
 /* ── Button wrapper injected into LeetCode nav ── */
 .iv-wrapper {
   display: flex;
@@ -141,3 +136,186 @@
   from { opacity: 1; transform: translateX(-50%) translateY(0); }
   to   { opacity: 0; transform: translateX(-50%) translateY(-8px); }
 }
+
+
+#iv-auth-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(6px);
+  z-index: 2147483640;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: iv-overlay-in 0.25s ease forwards;
+}
+
+#iv-auth-overlay.iv-hidden {
+  animation: iv-overlay-out 0.25s ease forwards;
+  pointer-events: none;
+}
+
+@keyframes iv-overlay-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes iv-overlay-out {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+
+/* Card */
+.iv-auth-card {
+  position: relative;
+  background: linear-gradient(145deg, #0f0f1a 0%, #141428 100%);
+  border: 1px solid rgba(99, 102, 241, 0.35);
+  border-radius: 18px;
+  padding: 36px 40px 32px;
+  width: 360px;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255,255,255,0.04) inset;
+  animation: iv-card-in 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  font-family: "Inter", "Segoe UI", system-ui, sans-serif;
+}
+
+@keyframes iv-card-in {
+  from { opacity: 0; transform: scale(0.88) translateY(20px); }
+  to   { opacity: 1; transform: scale(1)    translateY(0);    }
+}
+
+/* Logo / title */
+.iv-auth-logo {
+  text-align: center;
+  margin-bottom: 24px;
+}
+.iv-auth-logo span.iv-logo-icon {
+  font-size: 36px;
+  display: block;
+  margin-bottom: 6px;
+}
+.iv-auth-logo h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  color: #e8e8f8;
+  letter-spacing: 0.3px;
+}
+.iv-auth-logo p {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: rgba(200, 200, 220, 0.55);
+}
+
+/* Tab switcher */
+.iv-auth-tabs {
+  display: flex;
+  background: rgba(255,255,255,0.05);
+  border-radius: 10px;
+  padding: 3px;
+  margin-bottom: 24px;
+}
+.iv-auth-tab {
+  flex: 1;
+  padding: 8px 0;
+  border: none;
+  background: transparent;
+  color: rgba(200,200,220,0.5);
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: background 0.2s, color 0.2s;
+}
+.iv-auth-tab.iv-active {
+  background: linear-gradient(135deg, #4f46e5, #6366f1);
+  color: #fff;
+  box-shadow: 0 2px 10px rgba(99,102,241,0.4);
+}
+
+/* Form fields */
+.iv-auth-field {
+  margin-bottom: 14px;
+}
+.iv-auth-field label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(200,200,220,0.6);
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  margin-bottom: 5px;
+}
+.iv-auth-field input {
+  width: 100%;
+  padding: 10px 14px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(99,102,241,0.25);
+  border-radius: 9px;
+  color: #e8e8f8;
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.iv-auth-field input:focus {
+  border-color: rgba(99,102,241,0.7);
+  box-shadow: 0 0 0 3px rgba(99,102,241,0.15);
+}
+.iv-auth-field input::placeholder { color: rgba(200,200,220,0.3); }
+
+/* Submit button */
+.iv-auth-submit {
+  width: 100%;
+  margin-top: 6px;
+  padding: 11px 0;
+  border: none;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  letter-spacing: 0.3px;
+  box-shadow: 0 4px 18px rgba(99,102,241,0.4);
+  transition: opacity 0.2s, transform 0.15s, box-shadow 0.2s;
+}
+.iv-auth-submit:hover  { opacity: 0.9; transform: translateY(-1px); box-shadow: 0 6px 22px rgba(99,102,241,0.5); }
+.iv-auth-submit:active { transform: translateY(0); }
+.iv-auth-submit:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+/* Error message */
+.iv-auth-error {
+  margin-top: 10px;
+  padding: 8px 12px;
+  background: rgba(239,68,68,0.12);
+  border: 1px solid rgba(239,68,68,0.3);
+  border-radius: 8px;
+  color: #fca5a5;
+  font-size: 12px;
+  text-align: center;
+}
+
+/* Logged-in state inside overlay */
+.iv-auth-loggedin {
+  text-align: center;
+}
+.iv-auth-loggedin p {
+  color: rgba(200,200,220,0.75);
+  font-size: 14px;
+  margin: 0 0 16px;
+}
+.iv-auth-loggedin strong { color: #a5b4fc; }
+.iv-auth-logout {
+  padding: 8px 24px;
+  border: 1px solid rgba(239,68,68,0.4);
+  border-radius: 8px;
+  background: transparent;
+  color: #fca5a5;
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.iv-auth-logout:hover { background: rgba(239,68,68,0.12); }

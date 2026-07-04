@@ -1,30 +1,16 @@
-/**
- * IntraView – Offscreen Script
- *
- * Runs inside offscreen.html (a real extension page context).
- * This is the ONLY place Web Speech API works reliably in MV3.
- *
- * Message flow:
- *   background → {action:"startRecognition"} → starts SpeechRecognition
- *   background → {action:"stopRecognition"}  → stops cleanly
- *   here → {action:"transcript",  text}      → background → WS server
- *   here → {action:"recognitionError", error}→ background → content.js
- *   here → {action:"recognitionStopped"}     → background tears down
- */
-
 "use strict";
 
 let recognition = null;
 let isRecording = false;
 let micStream   = null;
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+
 
 function send(payload) {
   chrome.runtime.sendMessage(payload).catch(() => {});
 }
 
-// ─── Speech Recognition ───────────────────────────────────────────────────────
+
 
 async function startRecognition() {
   // Request mic explicitly so Chrome registers permission before SpeechRecognition
@@ -108,7 +94,7 @@ function releaseMic() {
   }
 }
 
-// ─── Message listener ─────────────────────────────────────────────────────────
+
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.action === "startRecognition") {

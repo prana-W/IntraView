@@ -3,7 +3,7 @@
   "name": "IntraView – LeetCode Voice Recorder",
   "version": "1.0.0",
   "description": "Record your voice while solving LeetCode problems.",
-  "permissions": ["storage", "activeTab"],
+  "permissions": ["storage", "activeTab", "offscreen"],
   "host_permissions": [
     "https://leetcode.com/*",
     "http://localhost:8765/*"

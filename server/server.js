@@ -1,51 +1,30 @@
-import http from "http";
-import fs   from "fs";
-import path from "path";
+import "dotenv/config";
+import express         from "express";
+import cors            from "cors";
+import mongoose        from "mongoose";
+import fs              from "fs";
+import path            from "path";
 import { fileURLToPath } from "url";
 import { pipeline, env } from "@xenova/transformers";
 
+import authRoutes      from "./routes/auth.js";
+import { authenticate } from "./middleware/authenticate.js";
+import Transcript      from "./models/Transcript.js";
+
 const __dirname       = path.dirname(fileURLToPath(import.meta.url));
-const PORT            = 8765;
+const PORT            = process.env.PORT || 8765;
 const TRANSCRIPTS_DIR = path.join(__dirname, "transcripts");
 const AUDIO_DIR       = path.join(__dirname, "audio");
-
 
 for (const dir of [TRANSCRIPTS_DIR, AUDIO_DIR]) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-function todayStr() {
-  const n = new Date();
-  return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,"0")}-${String(n.getDate()).padStart(2,"0")}`;
-}
 
-function appendTranscript(text) {
-  const file  = path.join(TRANSCRIPTS_DIR, `${todayStr()}.txt`);
-  const stamp = new Date().toLocaleTimeString("en-IN", { hour12: false });
-  fs.appendFileSync(file, `[${stamp}] ${text}\n`, "utf8");
-  return path.basename(file);
-}
+await mongoose.connect(process.env.MONGO_URI);
+console.log(`✅ MongoDB connected: ${process.env.MONGO_URI}\n`);
 
-/** Decode a 16-bit PCM WAV Buffer → Float32Array */
-function decodeWAV(buf) {
-  const view       = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
-  const numSamples = (buf.byteLength - 44) / 2;
-  const out        = new Float32Array(numSamples);
-  for (let i = 0; i < numSamples; i++) {
-    out[i] = view.getInt16(44 + i * 2, true) / 32768;
-  }
-  return out;
-}
 
-// ── CORS helper ───────────────────────────────────────────────────────────────
-function cors(res) {
-  res.setHeader("Access-Control-Allow-Origin",  "*");
-  res.setHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-Session-Id, X-Chunk-Index");
-}
-
-// ── Load Whisper model ────────────────────────────────────────────────────────
 console.log("╔══════════════════════════════════════════════════╗");
 console.log("║   IntraView – Loading Whisper (whisper-tiny.en)  ║");
 console.log("║   First run downloads ~40 MB. Please wait…       ║");
@@ -59,67 +38,122 @@ const transcriber = await pipeline(
 
 console.log("✅ Whisper model ready!\n");
 
-// ── HTTP server ───────────────────────────────────────────────────────────────
-const server = http.createServer(async (req, res) => {
-  cors(res);
 
-  // Preflight
-  if (req.method === "OPTIONS") { res.writeHead(204); res.end(); return; }
-
-  // Health check
-  if (req.method === "GET" && req.url === "/health") {
-    res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ status: "ok" }));
-    return;
+function decodeWAV(buf) {
+  const view       = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+  const numSamples = (buf.byteLength - 44) / 2;
+  const out        = new Float32Array(numSamples);
+  for (let i = 0; i < numSamples; i++) {
+    out[i] = view.getInt16(44 + i * 2, true) / 32768;
   }
+  return out;
+}
 
-  // Transcription endpoint
-  if (req.method === "POST" && req.url === "/transcribe") {
-    const rawChunks = [];
-    req.on("data", c => rawChunks.push(c));
-    req.on("end", async () => {
-      try {
-        const audioBuf   = Buffer.concat(rawChunks);
-        const sessionId  = (req.headers["x-session-id"]  ?? "unknown").slice(0, 30);
-        const chunkIndex = String(req.headers["x-chunk-index"] ?? "0").padStart(3, "0");
 
-        // Save chunk audio: YYYYMMDD-HHMMSS-session-chunk-NNN.wav
-        const now      = new Date();
-        const datePart = todayStr().replace(/-/g, "");
-        const timePart = now.toTimeString().slice(0, 8).replace(/:/g, "");
-        const audioFileName = `${datePart}-${timePart}-chunk-${chunkIndex}.wav`;
-        const audioFile     = path.join(AUDIO_DIR, audioFileName);
-        fs.writeFileSync(audioFile, audioBuf);
-        console.log(`[+] Chunk ${chunkIndex} saved: ${audioFileName} (${(audioBuf.length/1024).toFixed(1)} KB)`);
+function parseProblemTitle(url = "") {
+  const m = url.match(/\/problems\/([^/?#]+)/);
+  return m ? m[1] : "unknown";
+}
 
-        // Decode WAV → Float32 samples
-        const samples = decodeWAV(audioBuf);
 
-        // Transcribe with Whisper
-        console.log(`    Transcribing chunk ${chunkIndex}…`);
-        const result = await transcriber(samples, { sampling_rate: 16000 });
-        const transcript = (result?.text ?? "").trim();
-        console.log(`    → "${transcript}"`);
+function tempTxtPath(userId, sessionId) {
+  return path.join(TRANSCRIPTS_DIR, `${userId}-${sessionId}.txt`);
+}
 
-        // Save transcript
-        const saved = appendTranscript(transcript);
-        console.log(`    Appended to ${saved}\n`);
 
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ transcript, saved }));
-      } catch (err) {
-        console.error("[!] Transcription error:", err.message);
-        res.writeHead(500, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: err.message }));
-      }
-    });
-    return;
+function appendToTemp(userId, sessionId, text) {
+  const stamp = new Date().toLocaleTimeString("en-IN", { hour12: false });
+  fs.appendFileSync(tempTxtPath(userId, sessionId), `[${stamp}] ${text}\n`, "utf8");
+}
+
+
+const app = express();
+
+app.use(cors({
+  origin: true,          
+  allowedHeaders: ["Content-Type", "Authorization", "X-Session-Id", "X-Chunk-Index",
+                   "X-Problem-Url", "X-Recording-Done"],
+}));
+
+app.use((req, res, next) => {
+  if (req.headers["content-type"]?.startsWith("audio/")) {
+  
+    const chunks = [];
+    req.on("data", c => chunks.push(c));
+    req.on("end",  () => { req.rawBody = Buffer.concat(chunks); next(); });
+  } else {
+    express.json()(req, res, next);
   }
-
-  res.writeHead(404); res.end("Not found");
 });
 
-server.listen(PORT, () => {
+
+app.use("/auth", authRoutes);
+
+
+app.get("/health", (_req, res) => res.json({ status: "ok" }));
+
+
+app.post("/transcribe", authenticate, async (req, res) => {
+  try {
+    const audioBuf    = req.rawBody;
+    if (!audioBuf || audioBuf.length < 44)
+      return res.status(400).json({ error: "Empty or invalid WAV body" });
+
+    const sessionId   = (req.headers["x-session-id"]   ?? "unknown").slice(0, 40);
+    const chunkIndex  = String(req.headers["x-chunk-index"] ?? "0").padStart(3, "0");
+    const problemUrl  = req.headers["x-problem-url"]  ?? "";
+    const isDone      = req.headers["x-recording-done"] === "true";
+    const { id: userId } = req.user;
+
+    // Save raw audio file
+    const now      = new Date();
+    const datePart = now.toISOString().slice(0, 10).replace(/-/g, "");
+    const timePart = now.toTimeString().slice(0, 8).replace(/:/g, "");
+    const audioFile = path.join(AUDIO_DIR, `${datePart}-${timePart}-chunk-${chunkIndex}.wav`);
+    fs.writeFileSync(audioFile, audioBuf);
+    console.log(`[+] Chunk ${chunkIndex} | user=${req.user.username} | ${(audioBuf.length/1024).toFixed(1)} KB`);
+
+    // Transcribe
+    console.log(`    Transcribing chunk ${chunkIndex}…`);
+    const samples  = decodeWAV(audioBuf);
+    const result   = await transcriber(samples, { sampling_rate: 16000 });
+    const transcript = (result?.text ?? "").trim();
+    console.log(`    → "${transcript}"`);
+
+    // Append to per-session temp file
+    if (transcript) appendToTemp(userId, sessionId, transcript);
+
+    // Delete audio file after transcription
+    try { fs.unlinkSync(audioFile); } catch {}
+
+    // If this is the final chunk, persist to MongoDB and clean up
+    if (isDone) {
+      const txtFile = tempTxtPath(userId, sessionId);
+      let fullText  = "";
+      if (fs.existsSync(txtFile)) {
+        fullText = fs.readFileSync(txtFile, "utf8").trim();
+        try { fs.unlinkSync(txtFile); } catch {}
+      }
+
+      const problemTitle = parseProblemTitle(problemUrl);
+      await Transcript.create({
+        userId,
+        problemTitle,
+        problemLink:     problemUrl,
+        audioTranscript: fullText,
+      });
+      console.log(`    ✅ Transcript saved to MongoDB (problem: ${problemTitle})\n`);
+    }
+
+    res.json({ transcript, done: isDone });
+  } catch (err) {
+    console.error("[!] Transcription error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
+app.listen(PORT, () => {
   console.log("╔══════════════════════════════════════════════╗");
   console.log("║   IntraView – Transcript Server Running      ║");
   console.log(`║   POST http://localhost:${PORT}/transcribe     ║`);
