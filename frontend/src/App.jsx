@@ -1,27 +1,39 @@
-import {Home, About, NotFound, Test} from './pages';
-import ErrorBoundary from './components/ErrorBoundary.jsx';
-import { ThemeProvider } from "@/components/theme-provider"
+import { createBrowserRouter, RouterProvider } from 'react-router-dom';
+import { ThemeProvider } from '@/components/theme-provider';
+import { AuthProvider } from '@/context/AuthContext';
+import ErrorBoundary from '@/components/ErrorBoundary.jsx';
+import ProtectedRoute from '@/components/ProtectedRoute.jsx';
 import Layout from './Layout.jsx';
 
-
-import {createBrowserRouter, RouterProvider} from 'react-router-dom';
+import AuthPage         from './pages/AuthPage.jsx';
+import Dashboard        from './pages/Dashboard.jsx';
+import TranscriptDetail from './pages/TranscriptDetail.jsx';
+import { NotFound }     from './pages';
 
 const router = createBrowserRouter([
+    {
+        path: '/auth',
+        element: <AuthPage />,
+    },
     {
         path: '/',
         element: <Layout />,
         children: [
             {
-                path: '',
-                element: <Home />,
+                index: true,
+                element: (
+                    <ProtectedRoute>
+                        <Dashboard />
+                    </ProtectedRoute>
+                ),
             },
             {
-                path: 'about',
-                element: <About />,
-            },
-            {
-                path: 'test',
-                element: <Test />,
+                path: 'transcript/:id',
+                element: (
+                    <ProtectedRoute>
+                        <TranscriptDetail />
+                    </ProtectedRoute>
+                ),
             },
             {
                 path: '*',
@@ -34,9 +46,11 @@ const router = createBrowserRouter([
 function App() {
     return (
         <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
-        <ErrorBoundary>
-            <RouterProvider router={router} />
-        </ErrorBoundary>
+            <AuthProvider>
+                <ErrorBoundary>
+                    <RouterProvider router={router} />
+                </ErrorBoundary>
+            </AuthProvider>
         </ThemeProvider>
     );
 }

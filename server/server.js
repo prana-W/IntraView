@@ -153,6 +153,29 @@ app.post("/transcribe", authenticate, async (req, res) => {
 });
 
 
+// ── Get all transcripts for the user (protected) ─────────────────────────────
+app.get("/transcripts", authenticate, async (req, res) => {
+  try {
+    const transcripts = await Transcript.find({ userId: req.user.id })
+      .sort({ createdAt: -1 })
+      .select("problemTitle problemLink audioTranscript createdAt");
+    res.json({ transcripts });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Get single transcript (protected, must belong to user) ────────────────────
+app.get("/transcripts/:id", authenticate, async (req, res) => {
+  try {
+    const transcript = await Transcript.findOne({ _id: req.params.id, userId: req.user.id });
+    if (!transcript) return res.status(404).json({ error: "Not found" });
+    res.json({ transcript });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.listen(PORT, () => {
   console.log("╔══════════════════════════════════════════════╗");
   console.log("║   IntraView – Transcript Server Running      ║");
