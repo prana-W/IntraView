@@ -41,10 +41,20 @@ export default function Dashboard() {
         }
     }
 
+    async function handleDelete(id) {
+        try {
+            await api.delete(`/transcripts/${id}`);
+            setTranscripts(prev => prev.filter(t => t._id !== id));
+            toast.success("Transcript deleted successfully");
+        } catch (err) {
+            toast.error(`Failed to delete transcript: ${err.message}`);
+        }
+    }
+
     useEffect(() => { fetchTranscripts(); }, []);
 
     return (
-        <div className="max-w-6xl mx-auto px-4 py-10">
+        <div className="w-full max-w-6xl mx-auto px-4 py-10">
             {/* Page header */}
             <div className="flex items-center justify-between mb-8">
                 <div>
@@ -79,7 +89,7 @@ export default function Dashboard() {
             {!loading && transcripts.length > 0 && (
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                     {transcripts.map(t => (
-                        <TranscriptCard key={t._id} transcript={t} />
+                        <TranscriptCard key={t._id} transcript={t} onDelete={handleDelete} />
                     ))}
                 </div>
             )}

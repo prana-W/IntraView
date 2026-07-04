@@ -1,5 +1,5 @@
 
-const WS_URL = "ws://intraview-lcq1.onrender.com/";
+const WS_URL = "ws://localhost:8765/";
 
 let ws          = null;
 let activeTabId = null;

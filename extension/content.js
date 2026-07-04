@@ -1,7 +1,7 @@
 (function () {
   "use strict";
 
-  const SERVER   = "https://intraview-lcq1.onrender.com";
+  const SERVER   = "http://localhost:8765";
   const BTN_ID   = "intraview-record-btn";
   const TOAST_ID = "intraview-toast";
   const DOT_ID   = "intraview-indicator";

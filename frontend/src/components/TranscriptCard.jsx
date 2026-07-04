@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Calendar, ExternalLink, ChevronRight } from 'lucide-react';
+import { Calendar, ExternalLink, ChevronRight, Trash2 } from 'lucide-react';
 
 /** Convert a slug like "binary-tree-inorder-traversal" to "Binary Tree Inorder Traversal" */
 function prettifySlug(slug = '') {
@@ -30,7 +30,7 @@ function getPreview(text = '') {
     return clean.length > 130 ? clean.slice(0, 130) + '…' : clean;
 }
 
-export default function TranscriptCard({ transcript }) {
+export default function TranscriptCard({ transcript, onDelete }) {
     const navigate = useNavigate();
     const title = prettifySlug(transcript.problemTitle);
     const preview = getPreview(transcript.audioTranscript);
@@ -43,18 +43,18 @@ export default function TranscriptCard({ transcript }) {
         >
             <CardHeader className="pb-2">
                 <div className="flex items-start justify-between gap-2">
-                    <h3 className="font-semibold text-base leading-snug group-hover:text-primary transition-colors line-clamp-2">
+                    <h3 className="font-semibold text-base leading-snug group-hover:text-primary transition-colors line-clamp-2 min-w-0">
                         {title}
                     </h3>
                     <ChevronRight className="w-4 h-4 mt-0.5 text-muted-foreground shrink-0 group-hover:text-primary transition-colors" />
                 </div>
 
-                <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
-                    <span className="flex items-center gap-1">
+                <div className="flex items-center flex-wrap gap-x-3 gap-y-1 mt-1 text-xs text-muted-foreground">
+                    <span className="flex items-center gap-1 shrink-0">
                         <Calendar className="w-3 h-3" />
                         {formatDate(transcript.createdAt)}
                     </span>
-                    <span>{formatTime(transcript.createdAt)}</span>
+                    <span className="shrink-0">{formatTime(transcript.createdAt)}</span>
                     {transcript.problemLink && (
                         <a
                             href={transcript.problemLink}
@@ -75,13 +75,27 @@ export default function TranscriptCard({ transcript }) {
                 ) : (
                     <p className="text-sm text-muted-foreground italic">No transcript recorded.</p>
                 )}
-                {lineCount > 0 && (
-                    <div className="mt-3">
+                <div className="mt-3 flex items-center justify-between">
+                    {lineCount > 0 ? (
                         <Badge variant="secondary" className="text-xs">
                             {lineCount} chunk{lineCount !== 1 ? 's' : ''}
                         </Badge>
-                    </div>
-                )}
+                    ) : <div />}
+                    {onDelete && (
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                if (window.confirm("Are you sure you want to delete this transcript?")) {
+                                    onDelete(transcript._id);
+                                }
+                            }}
+                            className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-md transition-colors"
+                            title="Delete transcript"
+                        >
+                            <Trash2 className="w-4 h-4" />
+                        </button>
+                    )}
+                </div>
             </CardContent>
         </Card>
     );

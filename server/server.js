@@ -184,6 +184,17 @@ app.get("/transcripts/:id", authenticate, async (req, res) => {
   }
 });
 
+// ── Delete transcript (protected, must belong to user) ────────────────────────
+app.delete("/transcripts/:id", authenticate, async (req, res) => {
+  try {
+    const transcript = await Transcript.findOneAndDelete({ _id: req.params.id, userId: req.user.id });
+    if (!transcript) return res.status(404).json({ error: "Not found" });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.listen(PORT, "0.0.0.0", () => {
   console.log("╔══════════════════════════════════════════════╗");
   console.log("║   IntraView – Transcript Server Running      ║");

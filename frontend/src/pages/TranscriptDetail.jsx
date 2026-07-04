@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, ExternalLink, Copy, Check, Clock, AlertCircle } from 'lucide-react';
+import { ArrowLeft, ExternalLink, Copy, Check, Clock, AlertCircle, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import api from '@/lib/api';
 
@@ -44,6 +44,7 @@ export default function TranscriptDetail() {
     const [loading,    setLoading]    = useState(true);
     const [error,      setError]      = useState(null);
     const [copied,     setCopied]     = useState(false);
+    const [isDeleting, setIsDeleting] = useState(false);
 
     useEffect(() => {
         api.get(`/transcripts/${id}`)
@@ -63,10 +64,23 @@ export default function TranscriptDetail() {
         }).catch(() => toast.error('Failed to copy'));
     }, [transcript]);
 
+    const handleDelete = useCallback(async () => {
+        if (!transcript || !window.confirm("Are you sure you want to delete this transcript?")) return;
+        setIsDeleting(true);
+        try {
+            await api.delete(`/transcripts/${transcript._id}`);
+            toast.success("Transcript deleted successfully");
+            navigate('/');
+        } catch (err) {
+            toast.error(`Failed to delete: ${err.message}`);
+            setIsDeleting(false);
+        }
+    }, [transcript, navigate]);
+
     /* ── Loading ── */
     if (loading) {
         return (
-            <div className="max-w-4xl mx-auto px-4 py-10 space-y-6 animate-pulse">
+            <div className="w-full max-w-4xl mx-auto px-4 py-10 space-y-6 animate-pulse">
                 <div className="h-4 bg-muted rounded w-24" />
                 <div className="h-8 bg-muted rounded w-2/3" />
                 <div className="h-4 bg-muted rounded w-1/3" />
@@ -85,7 +99,7 @@ export default function TranscriptDetail() {
     /* ── Error ── */
     if (error) {
         return (
-            <div className="max-w-4xl mx-auto px-4 py-10">
+            <div className="w-full max-w-4xl mx-auto px-4 py-10">
                 <div className="flex flex-col items-center gap-4 py-20 text-center">
                     <AlertCircle className="w-12 h-12 text-destructive/60" />
                     <p className="text-destructive font-medium">{error}</p>
@@ -101,7 +115,7 @@ export default function TranscriptDetail() {
     const lines = parseLines(transcript.audioTranscript);
 
     return (
-        <div className="max-w-4xl mx-auto px-4 py-10">
+        <div className="w-full max-w-4xl mx-auto px-4 py-10">
             {/* Back button */}
             <Button
                 variant="ghost"
@@ -116,16 +130,26 @@ export default function TranscriptDetail() {
             <div className="mb-8">
                 <div className="flex items-start justify-between gap-4">
                     <h1 className="text-3xl font-bold tracking-tight leading-tight">{title}</h1>
-                    <Button
-                        onClick={handleCopy}
-                        className="shrink-0 gap-2 shadow-lg shadow-primary/25"
-                        disabled={copied}
-                    >
-                        {copied
-                            ? <><Check className="w-4 h-4" /> Copied!</>
-                            : <><Copy className="w-4 h-4" /> Copy with AI Prompt</>
-                        }
-                    </Button>
+                    <div className="flex gap-2">
+                        <Button
+                            variant="destructive"
+                            onClick={handleDelete}
+                            disabled={isDeleting}
+                            className="shrink-0 gap-2 shadow-sm"
+                        >
+                            <Trash2 className="w-4 h-4" /> Delete
+                        </Button>
+                        <Button
+                            onClick={handleCopy}
+                            className="shrink-0 gap-2 shadow-lg shadow-primary/25"
+                            disabled={copied}
+                        >
+                            {copied
+                                ? <><Check className="w-4 h-4" /> Copied!</>
+                                : <><Copy className="w-4 h-4" /> Copy with AI Prompt</>
+                            }
+                        </Button>
+                    </div>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-4 mt-3 text-sm text-muted-foreground">
