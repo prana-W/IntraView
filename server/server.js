@@ -75,29 +75,35 @@ const server = http.createServer(async (req, res) => {
 
   // Transcription endpoint
   if (req.method === "POST" && req.url === "/transcribe") {
-    const chunks = [];
-    req.on("data", c => chunks.push(c));
+    const rawChunks = [];
+    req.on("data", c => rawChunks.push(c));
     req.on("end", async () => {
       try {
-        const audioBuf = Buffer.concat(chunks);
+        const audioBuf   = Buffer.concat(rawChunks);
+        const sessionId  = (req.headers["x-session-id"]  ?? "unknown").slice(0, 30);
+        const chunkIndex = String(req.headers["x-chunk-index"] ?? "0").padStart(3, "0");
 
-        // Save raw audio for reference
-        const audioFile = path.join(AUDIO_DIR, `${todayStr()}-${Date.now()}.wav`);
+        // Save chunk audio: YYYYMMDD-HHMMSS-session-chunk-NNN.wav
+        const now      = new Date();
+        const datePart = todayStr().replace(/-/g, "");
+        const timePart = now.toTimeString().slice(0, 8).replace(/:/g, "");
+        const audioFileName = `${datePart}-${timePart}-chunk-${chunkIndex}.wav`;
+        const audioFile     = path.join(AUDIO_DIR, audioFileName);
         fs.writeFileSync(audioFile, audioBuf);
-        console.log(`[+] Audio saved: ${path.basename(audioFile)} (${(audioBuf.length/1024).toFixed(1)} KB)`);
+        console.log(`[+] Chunk ${chunkIndex} saved: ${audioFileName} (${(audioBuf.length/1024).toFixed(1)} KB)`);
 
         // Decode WAV → Float32 samples
         const samples = decodeWAV(audioBuf);
 
         // Transcribe with Whisper
-        console.log("    Transcribing…");
+        console.log(`    Transcribing chunk ${chunkIndex}…`);
         const result = await transcriber(samples, { sampling_rate: 16000 });
         const transcript = (result?.text ?? "").trim();
         console.log(`    → "${transcript}"`);
 
         // Save transcript
         const saved = appendTranscript(transcript);
-        console.log(`    Saved to ${saved}\n`);
+        console.log(`    Appended to ${saved}\n`);
 
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ transcript, saved }));
