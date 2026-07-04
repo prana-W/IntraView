@@ -70,10 +70,18 @@ function appendToTemp(userId, sessionId, text) {
 const app = express();
 
 app.use(cors({
-  origin: true,          
+  origin: "*",          
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization", "X-Session-Id", "X-Chunk-Index",
                    "X-Problem-Url", "X-Recording-Done"],
 }));
+
+// Global request logger
+app.use((req, res, next) => {
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+  next();
+});
+
 
 app.use((req, res, next) => {
   if (req.headers["content-type"]?.startsWith("audio/")) {
@@ -176,7 +184,7 @@ app.get("/transcripts/:id", authenticate, async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
+app.listen(PORT, "0.0.0.0", () => {
   console.log("╔══════════════════════════════════════════════╗");
   console.log("║   IntraView – Transcript Server Running      ║");
   console.log(`║   POST http://localhost:${PORT}/transcribe     ║`);

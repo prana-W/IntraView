@@ -1,7 +1,7 @@
 (function () {
   "use strict";
 
-  const SERVER   = "http://localhost:8765";
+  const SERVER   = "https://intraview-lcq1.onrender.com";
   const BTN_ID   = "intraview-record-btn";
   const TOAST_ID = "intraview-toast";
   const DOT_ID   = "intraview-indicator";
@@ -85,6 +85,7 @@
       // Show login / register form
       overlay.innerHTML = `
         <div class="iv-auth-card">
+          <button id="iv-close-overlay" style="position:absolute; top:16px; right:16px; background:none; border:none; color:rgba(255,255,255,0.5); font-size:18px; cursor:pointer; padding:4px;">✖</button>
           <div class="iv-auth-logo">
             <span class="iv-logo-icon">🎙️</span>
             <h2>IntraView</h2>
@@ -129,6 +130,9 @@
         </div>`;
 
       document.body.appendChild(overlay);
+
+      document.getElementById("iv-close-overlay").addEventListener("click", removeOverlay);
+
 
       // Tab switching
       const loginForm  = document.getElementById("iv-login-form");
@@ -238,9 +242,38 @@
         return false;
       }
     } catch {
-      // Server unreachable — allow recording attempts, they will fail gracefully
-      return !!token;
+      // Server unreachable
+      showToast("⚠️ Server unreachable.", "error");
+      return false;
     }
+  }
+
+  let healthPolling = false;
+  async function pollHealth() {
+    if (healthPolling) return;
+    try {
+      const res = await fetch(`${SERVER}/health`);
+      if (res.ok) return; // connected, nothing to do
+    } catch (err) {
+      // failed, start polling
+    }
+    
+    healthPolling = true;
+    showToast("🔄 Server is connecting...", "info", true);
+
+    const check = async () => {
+      if (!healthPolling) return;
+      try {
+        const res = await fetch(`${SERVER}/health`);
+        if (res.ok) {
+          showToast("✅ Server connected!", "success");
+          healthPolling = false;
+          return;
+        }
+      } catch (err) {}
+      setTimeout(check, 3000);
+    };
+    setTimeout(check, 3000);
   }
 
 
@@ -330,12 +363,8 @@
 
 
   async function startRecording() {
-    const token = await loadToken();
-    if (!token) {
-      showToast("⚠️ Please login first.", "error");
-      showAuthOverlay(null);
-      return;
-    }
+    const isAuth = await checkAuth();
+    if (!isAuth) return;
 
     try { micStream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
     catch { showToast("❌ Mic access denied.", "error"); return; }
@@ -413,12 +442,18 @@
     btn.classList.add("iv-floating"); document.body.appendChild(btn);
   }
 
-  function showToast(msg, type="info") {
+  function showToast(msg, type="info", persist=false) {
     let t=document.getElementById(TOAST_ID);
     if (!t){t=document.createElement("div");t.id=TOAST_ID;document.body.appendChild(t);}
+    t.style.display = "block";
     t.className=`iv-toast iv-toast-${type} iv-toast-enter`; t.textContent=msg;
     clearTimeout(t._timer);
-    t._timer=setTimeout(()=>{t.classList.add("iv-toast-exit");setTimeout(()=>{t.textContent="";t.className="iv-toast";},400);},4000);
+    if (!persist) {
+      t._timer=setTimeout(()=>{
+        t.className="iv-toast iv-toast-exit";
+        setTimeout(()=>{t.style.display="none";t.textContent="";},400);
+      },4000);
+    }
   }
 
   function tryInject() {
@@ -428,7 +463,7 @@
 
 
   async function init() {
-    await checkAuth();
+    pollHealth();
     tryInject();
     new MutationObserver(tryInject).observe(document.body, { childList: true, subtree: true });
   }
@@ -437,8 +472,8 @@
   setInterval(() => {
     if (location.href !== lastHref) {
       lastHref = location.href;
-      setTimeout(async () => {
-        await checkAuth();
+      setTimeout(() => {
+        pollHealth();
         setTimeout(tryInject, 800);
       }, 300);
     }
