@@ -323,8 +323,6 @@
       sentSamples  = samples.length;
       if (delta.length === 0) return;
 
-      console.log(`[IntraView] Chunk ${idx}: ${(delta.length/sr).toFixed(1)}s of audio`);
-
       const wav = new Blob([encodeWAV(delta, sr)], { type: "audio/wav" });
       const token = currentToken || await loadToken();
       const res = await fetch(`${SERVER}/transcribe`, {
@@ -349,11 +347,7 @@
       }
       if (!res.ok) throw new Error(`Server ${res.status}`);
 
-      const { transcript } = await res.json();
-      if (transcript) {
-        const preview = transcript.length > 55 ? transcript.slice(0,55)+"…" : transcript;
-        showToast(`📝 Chunk ${idx+1}: "${preview}"`, "success");
-      }
+      await res.json();
       if (isDone) showToast("✅ Transcript saved!", "success");
     } catch (err) {
       console.error("[IntraView] Chunk error:", err);
@@ -418,11 +412,9 @@
     if (isRecording) {
       btn.classList.add("iv-recording"); btn.title = "Stop recording";
       btn.querySelector(".iv-btn-label").textContent = "Stop";
-      btn.querySelector(".iv-btn-icon").textContent  = "⏹";
     } else {
       btn.classList.remove("iv-recording"); btn.title = "Start voice recording";
-      btn.querySelector(".iv-btn-label").textContent = "Record";
-      btn.querySelector(".iv-btn-icon").textContent  = "🎙";
+      btn.querySelector(".iv-btn-label").textContent = "IntraView";
     }
   }
 
@@ -432,7 +424,7 @@
     if (document.getElementById(BTN_ID)) return;
     const btn = document.createElement("button");
     btn.id = BTN_ID; btn.title = "Start voice recording";
-    btn.innerHTML = `<span class="iv-btn-icon">🎙</span><span class="iv-btn-label">Record</span><span id="${DOT_ID}" class="iv-pulse-dot" style="display:none;"></span>`;
+    btn.innerHTML = `<span class="iv-btn-label">IntraView</span><span id="${DOT_ID}" class="iv-pulse-dot" style="display:none;"></span>`;
     btn.addEventListener("click", toggleRecording);
     const sel = ["nav","[class*='NavBar']","[class*='header']","header","#__next nav"];
     for (const s of sel) {
