@@ -22,14 +22,25 @@ for (const dir of [TRANSCRIPTS_DIR, AUDIO_DIR]) {
 await mongoose.connect(process.env.MONGO_URI);
 console.log(`✅ MongoDB connected: ${process.env.MONGO_URI}\n`);
 
-
 const transcriber = await pipeline(
   "automatic-speech-recognition",
-  "Xenova/whisper-tiny.en",
+  "Xenova/whisper-medium.en",
   { quantized: true }
 );
 
 console.log("✅ Whisper model ready!\n");
+
+class AsyncQueue {
+  constructor() {
+    this.queue = Promise.resolve();
+  }
+  enqueue(task) {
+    return new Promise((resolve, reject) => {
+      this.queue = this.queue.then(() => task().then(resolve).catch(reject));
+    });
+  }
+}
+const transcriptionQueue = new AsyncQueue();
 
 
 function decodeWAV(buf) {
@@ -123,52 +134,63 @@ app.post("/transcribe", async (req, res) => {
     const chunkIndex  = String(req.headers["x-chunk-index"] ?? "0").padStart(3, "0");
     const problemUrl  = req.headers["x-problem-url"]  ?? "";
     const isDone      = req.headers["x-recording-done"] === "true";
-        // Save raw audio file
-    const now      = new Date();
-    const datePart = now.toISOString().slice(0, 10).replace(/-/g, "");
-    const timePart = now.toTimeString().slice(0, 8).replace(/:/g, "");
-    const audioFile = path.join(AUDIO_DIR, `${datePart}-${timePart}-chunk-${chunkIndex}.wav`);
-    fs.writeFileSync(audioFile, audioBuf);
-    console.log(`[+] Chunk ${chunkIndex} | ${(audioBuf.length/1024).toFixed(1)} KB`);
 
-    // Transcribe
-    console.log(`    Transcribing chunk ${chunkIndex}…`);
-    const samples  = decodeWAV(audioBuf);
-    const result   = await transcriber(samples, { sampling_rate: 16000 });
-    const transcript = (result?.text ?? "").trim();
-    console.log(`    → "${transcript}"`);
+    // Enqueue transcription to avoid concurrent Whisper model executions
+    const { transcript, done } = await transcriptionQueue.enqueue(async () => {
+      // Save raw audio file
+      const now      = new Date();
+      const datePart = now.toISOString().slice(0, 10).replace(/-/g, "");
+      const timePart = now.toTimeString().slice(0, 8).replace(/:/g, "");
+      const audioFile = path.join(AUDIO_DIR, `${datePart}-${timePart}-chunk-${chunkIndex}.wav`);
+      fs.writeFileSync(audioFile, audioBuf);
+      console.log(`[+] Chunk ${chunkIndex} | ${(audioBuf.length/1024).toFixed(1)} KB`);
 
-    // Append to per-session temp file
-    if (transcript) appendToTemp(sessionId, chunkIndex, transcript);
-
-    // Delete audio file after transcription
-    try { fs.unlinkSync(audioFile); } catch {}
-
-    // If this is the final chunk, persist to MongoDB and clean up
-    if (isDone) {
-      const txtFile = tempTxtPath(sessionId);
-      let fullText  = "";
-      if (fs.existsSync(txtFile)) {
-        fullText = fs.readFileSync(txtFile, "utf8").trim();
-        // Remove lines that only contain noise like (upbeat music), [BLANK_AUDIO], etc.
-        fullText = fullText.split('\n').filter(line => {
-          const textPart = line.replace(/^\[.*?\]\s*/, '').trim();
-          return textPart.replace(/\([^)]*\)|\[[^\]]*\]/g, '').trim().length > 0;
-        }).join('\n');
-        try { fs.unlinkSync(txtFile); } catch {}
+      // Transcribe
+      const samples  = decodeWAV(audioBuf);
+      let transcriptText = "";
+      if (samples.length > 0) {
+        console.log(`    Transcribing chunk ${chunkIndex}…`);
+        const result   = await transcriber(samples, { sampling_rate: 16000 });
+        transcriptText = (result?.text ?? "").trim();
+        console.log(`    → "${transcriptText}"`);
+      } else {
+        console.log(`    (Empty chunk ${chunkIndex} skipped transcription)`);
       }
 
-      const problemTitle = parseProblemTitle(problemUrl);
-      await Transcript.create({
-        sessionId,
-        problemTitle,
-        problemLink:     problemUrl,
-        audioTranscript: fullText,
-      });
-      console.log(`    ✅ Transcript saved to MongoDB (problem: ${problemTitle})\n`);
-    }
+      // Append to per-session temp file
+      if (transcriptText) appendToTemp(sessionId, chunkIndex, transcriptText);
 
-    res.json({ transcript, done: isDone });
+      // Delete audio file after transcription
+      try { fs.unlinkSync(audioFile); } catch {}
+
+      // If this is the final chunk, persist to MongoDB and clean up
+      if (isDone) {
+        const txtFile = tempTxtPath(sessionId);
+        let fullText  = "";
+        if (fs.existsSync(txtFile)) {
+          fullText = fs.readFileSync(txtFile, "utf8").trim();
+          // Remove lines that only contain noise like (upbeat music), [BLANK_AUDIO], etc.
+          fullText = fullText.split('\n').filter(line => {
+            const textPart = line.replace(/^\[.*?\]\s*/, '').trim();
+            return textPart.replace(/\([^)]*\)|\[[^\]]*\]/g, '').trim().length > 0;
+          }).join('\n');
+          try { fs.unlinkSync(txtFile); } catch {}
+        }
+
+        const problemTitle = parseProblemTitle(problemUrl);
+        await Transcript.create({
+          sessionId,
+          problemTitle,
+          problemLink:     problemUrl,
+          audioTranscript: fullText,
+        });
+        console.log(`    ✅ Transcript saved to MongoDB (problem: ${problemTitle})\n`);
+      }
+      
+      return { transcript: transcriptText, done: isDone };
+    });
+
+    res.json({ transcript, done });
   } catch (err) {
     console.error("[!] Transcription error:", err.message);
     res.status(500).json({ error: err.message });

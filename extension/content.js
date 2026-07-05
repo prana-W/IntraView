@@ -17,6 +17,7 @@
   let sessionId     = null;
   let flushTimer    = null;
   let mimeType      = "";
+  let flushPromise  = Promise.resolve();
 
   function encodeWAV(samples, sr) {
     const len = samples.length * 2;
@@ -49,19 +50,30 @@
     return { samples: res.getChannelData(0), sr: SR };
   }
 
-  async function flushChunk(isDone = false) {
-    if (pendingBufs.length === flushedUpTo) return;
-
+  async function doFlush(isDone = false) {
     const snapshot = pendingBufs.slice();
-    flushedUpTo    = pendingBufs.length;
-    const idx      = chunkIndex++;
-    const fullBlob = new Blob(snapshot, { type: mimeType });
+    if (snapshot.length === flushedUpTo && !isDone) return; // Nothing to do
+
+    flushedUpTo = snapshot.length;
+    const idx = chunkIndex++;
+    let delta = new Float32Array(0);
+    let sr = 16000;
+
+    if (snapshot.length > 0) {
+      const fullBlob = new Blob(snapshot, { type: mimeType });
+      try {
+        const decoded = await decodeToSamples(fullBlob);
+        delta = decoded.samples.slice(sentSamples);
+        sr = decoded.sr;
+        sentSamples = decoded.samples.length;
+      } catch (err) {
+        console.error("[IntraView] Decode error:", err);
+      }
+    }
+
+    if (delta.length === 0 && !isDone) return;
 
     try {
-      const { samples, sr } = await decodeToSamples(fullBlob);
-      const delta = samples.slice(sentSamples);
-      sentSamples  = samples.length;
-      if (delta.length === 0) return;
 
       const wav = new Blob([encodeWAV(delta, sr)], { type: "audio/wav" });
       const res = await fetch(`${SERVER}/transcribe`, {
@@ -84,6 +96,10 @@
       console.error("[IntraView] Chunk error:", err);
       showToast(`⚠️ Chunk ${idx+1} failed: ${err.message}`, "error");
     }
+  }
+
+  function flushChunk(isDone = false) {
+    flushPromise = flushPromise.then(() => doFlush(isDone)).catch(err => console.error(err));
   }
 
   async function startRecording() {

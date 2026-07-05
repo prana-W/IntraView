@@ -196,7 +196,7 @@ export default function TranscriptDetail() {
                     </h3>
                     <audio 
                         controls 
-                        className="w-full h-10 outline-none" 
+                        className="w-full outline-none" 
                         src={`${BASE}/audio/${transcript.sessionId}.webm`} 
                     />
                 </div>
