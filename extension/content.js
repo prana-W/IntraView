@@ -116,8 +116,20 @@
     flushTimer = null;
 
     if (mediaRecorder && mediaRecorder.state !== "inactive") {
-      mediaRecorder.addEventListener("stop", () => {
+      mediaRecorder.addEventListener("stop", async () => {
         flushChunk(true);   // final chunk → triggers MongoDB save on server
+        
+        try {
+          const fullBlob = new Blob(pendingBufs, { type: mimeType });
+          await fetch(`${SERVER}/audio/${sessionId}`, {
+            method: "POST",
+            headers: { "Content-Type": mimeType },
+            body: fullBlob
+          });
+        } catch (err) {
+          console.error("[IntraView] Failed to upload full audio:", err);
+        }
+
         micStream?.getTracks().forEach(t => t.stop());
         micStream = null;
       }, { once: true });

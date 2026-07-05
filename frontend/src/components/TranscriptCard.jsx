@@ -1,7 +1,9 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Calendar, ExternalLink, ChevronRight, Trash2 } from 'lucide-react';
+import ConfirmDialog from './ConfirmDialog';
 
 /** Convert a slug like "binary-tree-inorder-traversal" to "Binary Tree Inorder Traversal" */
 function prettifySlug(slug = '') {
@@ -32,11 +34,14 @@ function getPreview(text = '') {
 
 export default function TranscriptCard({ transcript, onDelete }) {
     const navigate = useNavigate();
+    const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+    
     const title = prettifySlug(transcript.problemTitle);
     const preview = getPreview(transcript.audioTranscript);
     const lineCount = transcript.audioTranscript?.split('\n').filter(Boolean).length || 0;
 
     return (
+        <>
         <Card
             onClick={() => navigate(`/transcript/${transcript._id}`)}
             className="group cursor-pointer border-border hover:border-primary/40 hover:shadow-lg hover:shadow-primary/10 transition-all duration-200 hover:-translate-y-0.5"
@@ -85,9 +90,7 @@ export default function TranscriptCard({ transcript, onDelete }) {
                         <button
                             onClick={(e) => {
                                 e.stopPropagation();
-                                if (window.confirm("Are you sure you want to delete this transcript?")) {
-                                    onDelete(transcript._id);
-                                }
+                                setShowDeleteDialog(true);
                             }}
                             className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-md transition-colors"
                             title="Delete transcript"
@@ -98,5 +101,14 @@ export default function TranscriptCard({ transcript, onDelete }) {
                 </div>
             </CardContent>
         </Card>
+        
+        <ConfirmDialog 
+            isOpen={showDeleteDialog}
+            onClose={() => setShowDeleteDialog(false)}
+            onConfirm={() => onDelete(transcript._id)}
+            title="Delete Transcript"
+            description="Are you sure you want to permanently delete this transcript and its associated audio file? This action cannot be undone."
+        />
+        </>
     );
 }

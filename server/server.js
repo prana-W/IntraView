@@ -23,11 +23,6 @@ await mongoose.connect(process.env.MONGO_URI);
 console.log(`✅ MongoDB connected: ${process.env.MONGO_URI}\n`);
 
 
-console.log("╔══════════════════════════════════════════════════╗");
-console.log("║   IntraView – Loading Whisper (whisper-tiny.en)  ║");
-console.log("║   First run downloads ~40 MB. Please wait…       ║");
-console.log("╚══════════════════════════════════════════════════╝\n");
-
 const transcriber = await pipeline(
   "automatic-speech-recognition",
   "Xenova/whisper-tiny.en",
@@ -81,10 +76,12 @@ app.use(cors({
 
 // Global request logger
 app.use((req, res, next) => {
-  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+  console.log(`${req.method} ${req.url}`);
   next();
 });
 
+// Serve audio statically
+app.use("/audio", express.static(AUDIO_DIR));
 
 app.use((req, res, next) => {
   if (req.headers["content-type"]?.startsWith("audio/")) {
@@ -99,6 +96,21 @@ app.use((req, res, next) => {
 
 
 app.get("/health", (_req, res) => res.json({ status: "ok" }));
+
+
+app.post("/audio/:sessionId", (req, res) => {
+  try {
+    const sessionId = req.params.sessionId;
+    const audioBuf = req.rawBody;
+    if (!audioBuf) return res.status(400).json({ error: "Empty body" });
+    const audioFile = path.join(AUDIO_DIR, `${sessionId}.webm`);
+    fs.writeFileSync(audioFile, audioBuf);
+    console.log(`    ✅ Saved full audio recording for session ${sessionId}`);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 
 app.post("/transcribe", async (req, res) => {
@@ -148,6 +160,7 @@ app.post("/transcribe", async (req, res) => {
 
       const problemTitle = parseProblemTitle(problemUrl);
       await Transcript.create({
+        sessionId,
         problemTitle,
         problemLink:     problemUrl,
         audioTranscript: fullText,
@@ -168,7 +181,7 @@ app.get("/transcripts", async (req, res) => {
   try {
     const transcripts = await Transcript.find({})
       .sort({ createdAt: -1 })
-      .select("problemTitle problemLink audioTranscript createdAt");
+      .select("sessionId problemTitle problemLink audioTranscript createdAt");
     res.json({ transcripts });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -191,6 +204,12 @@ app.delete("/transcripts/:id", async (req, res) => {
   try {
     const transcript = await Transcript.findByIdAndDelete(req.params.id);
     if (!transcript) return res.status(404).json({ error: "Not found" });
+    
+    if (transcript.sessionId) {
+      const audioFile = path.join(AUDIO_DIR, `${transcript.sessionId}.webm`);
+      try { fs.unlinkSync(audioFile); } catch {}
+    }
+
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -198,10 +217,5 @@ app.delete("/transcripts/:id", async (req, res) => {
 });
 
 app.listen(PORT, "0.0.0.0", () => {
-  console.log("╔══════════════════════════════════════════════╗");
-  console.log("║   IntraView – Transcript Server Running      ║");
-  console.log(`║   POST http://localhost:${PORT}/transcribe     ║`);
-  console.log(`║   GET  http://localhost:${PORT}/health         ║`);
-  console.log("╚══════════════════════════════════════════════╝\n");
-  console.log("Waiting for recordings…\n");
+  console.log("Server running on port", PORT);
 });

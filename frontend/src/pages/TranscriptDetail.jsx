@@ -3,7 +3,8 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, ExternalLink, Copy, Check, Clock, AlertCircle, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
-import api from '@/lib/api';
+import api, { BASE } from '@/lib/api';
+import ConfirmDialog from '@/components/ConfirmDialog';
 
 const AI_PROMPT_TEMPLATE = (title, transcript) =>
 `Act as an interviewer and review my approach for the problem: ${title} on LeetCode.
@@ -45,6 +46,7 @@ export default function TranscriptDetail() {
     const [error,      setError]      = useState(null);
     const [copied,     setCopied]     = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
+    const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
     useEffect(() => {
         api.get(`/transcripts/${id}`)
@@ -65,7 +67,7 @@ export default function TranscriptDetail() {
     }, [transcript]);
 
     const handleDelete = useCallback(async () => {
-        if (!transcript || !window.confirm("Are you sure you want to delete this transcript?")) return;
+        if (!transcript) return;
         setIsDeleting(true);
         try {
             await api.delete(`/transcripts/${transcript._id}`);
@@ -133,7 +135,7 @@ export default function TranscriptDetail() {
                     <div className="flex gap-2">
                         <Button
                             variant="destructive"
-                            onClick={handleDelete}
+                            onClick={() => setShowDeleteDialog(true)}
                             disabled={isDeleting}
                             className="shrink-0 gap-2 shadow-sm"
                         >
@@ -186,6 +188,20 @@ export default function TranscriptDetail() {
             {/* Divider */}
             <div className="border-t border-border mb-8" />
 
+            {/* Audio Player */}
+            {transcript.sessionId && (
+                <div className="mb-8 p-4 rounded-xl border border-border bg-card shadow-sm">
+                    <h3 className="text-sm font-medium text-foreground mb-3 flex items-center gap-2">
+                        Listen to Recording
+                    </h3>
+                    <audio 
+                        controls 
+                        className="w-full h-10 outline-none" 
+                        src={`${BASE}/audio/${transcript.sessionId}.webm`} 
+                    />
+                </div>
+            )}
+
             {/* Transcript */}
             {lines.length === 0 ? (
                 <div className="py-16 text-center text-muted-foreground">
@@ -214,6 +230,14 @@ export default function TranscriptDetail() {
                     ))}
                 </div>
             )}
+            
+            <ConfirmDialog 
+                isOpen={showDeleteDialog}
+                onClose={() => setShowDeleteDialog(false)}
+                onConfirm={handleDelete}
+                title="Delete Transcript"
+                description="Are you sure you want to permanently delete this transcript and its associated audio file? This action cannot be undone."
+            />
         </div>
     );
 }
