@@ -1,20 +1,10 @@
-import { Link, useNavigate } from 'react-router-dom';
-import { useAuth } from '@/context/AuthContext';
+import { Link } from 'react-router-dom';
 import { useTheme } from '@/components/theme-provider';
 import { Button } from '@/components/ui/button';
-import { Mic, Sun, Moon, LogOut, LayoutDashboard } from 'lucide-react';
-import { toast } from 'sonner';
+import { Mic, Sun, Moon, LayoutDashboard } from 'lucide-react';
 
 export default function Navbar() {
-    const { user, logout } = useAuth();
     const { theme, setTheme } = useTheme();
-    const navigate = useNavigate();
-
-    function handleLogout() {
-        logout();
-        toast.success('Logged out successfully');
-        navigate('/auth');
-    }
 
     return (
         <header className="sticky top-0 z-50 w-full border-b border-border bg-background/80 backdrop-blur-md">
@@ -34,14 +24,12 @@ export default function Navbar() {
 
                 {/* Right side */}
                 <div className="flex items-center gap-2">
-                    {user && (
-                        <Link to="/">
-                            <Button variant="ghost" size="sm" className="hidden sm:flex gap-2">
-                                <LayoutDashboard className="w-4 h-4" />
-                                Dashboard
-                            </Button>
-                        </Link>
-                    )}
+                    <Link to="/">
+                        <Button variant="ghost" size="sm" className="hidden sm:flex gap-2">
+                            <LayoutDashboard className="w-4 h-4" />
+                            Dashboard
+                        </Button>
+                    </Link>
 
                     {/* Theme toggle */}
                     <Button
@@ -55,26 +43,6 @@ export default function Navbar() {
                             : <Moon className="w-4 h-4" />
                         }
                     </Button>
-
-                    {user && (
-                        <>
-                            <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-muted text-sm font-medium">
-                                <div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center text-primary text-xs font-bold">
-                                    {user.username?.[0]?.toUpperCase() || user.email?.[0]?.toUpperCase()}
-                                </div>
-                                <span className="text-muted-foreground">{user.username || user.email}</span>
-                            </div>
-                            <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={handleLogout}
-                                aria-label="Logout"
-                                className="text-muted-foreground hover:text-destructive"
-                            >
-                                <LogOut className="w-4 h-4" />
-                            </Button>
-                        </>
-                    )}
                 </div>
             </div>
         </header>

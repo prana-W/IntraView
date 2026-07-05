@@ -7,8 +7,6 @@ import path            from "path";
 import { fileURLToPath } from "url";
 import { pipeline, env } from "@xenova/transformers";
 
-import authRoutes      from "./routes/auth.js";
-import { authenticate } from "./middleware/authenticate.js";
 import Transcript      from "./models/Transcript.js";
 
 const __dirname       = path.dirname(fileURLToPath(import.meta.url));
@@ -56,14 +54,19 @@ function parseProblemTitle(url = "") {
 }
 
 
-function tempTxtPath(userId, sessionId) {
-  return path.join(TRANSCRIPTS_DIR, `${userId}-${sessionId}.txt`);
+function tempTxtPath(sessionId) {
+  return path.join(TRANSCRIPTS_DIR, `${sessionId}.txt`);
 }
 
 
-function appendToTemp(userId, sessionId, text) {
-  const stamp = new Date().toLocaleTimeString("en-IN", { hour12: false });
-  fs.appendFileSync(tempTxtPath(userId, sessionId), `[${stamp}] ${text}\n`, "utf8");
+function appendToTemp(sessionId, chunkIndex, text) {
+  const idx = parseInt(chunkIndex, 10) || 0;
+  const totalSeconds = idx * 25;
+  const h = Math.floor(totalSeconds / 3600).toString().padStart(2, "0");
+  const m = Math.floor((totalSeconds % 3600) / 60).toString().padStart(2, "0");
+  const s = (totalSeconds % 60).toString().padStart(2, "0");
+  const stamp = `${h}:${m}:${s}`;
+  fs.appendFileSync(tempTxtPath(sessionId), `[${stamp}] ${text}\n`, "utf8");
 }
 
 
@@ -95,13 +98,10 @@ app.use((req, res, next) => {
 });
 
 
-app.use("/auth", authRoutes);
-
-
 app.get("/health", (_req, res) => res.json({ status: "ok" }));
 
 
-app.post("/transcribe", authenticate, async (req, res) => {
+app.post("/transcribe", async (req, res) => {
   try {
     const audioBuf    = req.rawBody;
     if (!audioBuf || audioBuf.length < 44)
@@ -111,15 +111,13 @@ app.post("/transcribe", authenticate, async (req, res) => {
     const chunkIndex  = String(req.headers["x-chunk-index"] ?? "0").padStart(3, "0");
     const problemUrl  = req.headers["x-problem-url"]  ?? "";
     const isDone      = req.headers["x-recording-done"] === "true";
-    const { id: userId } = req.user;
-
-    // Save raw audio file
+        // Save raw audio file
     const now      = new Date();
     const datePart = now.toISOString().slice(0, 10).replace(/-/g, "");
     const timePart = now.toTimeString().slice(0, 8).replace(/:/g, "");
     const audioFile = path.join(AUDIO_DIR, `${datePart}-${timePart}-chunk-${chunkIndex}.wav`);
     fs.writeFileSync(audioFile, audioBuf);
-    console.log(`[+] Chunk ${chunkIndex} | user=${req.user.username} | ${(audioBuf.length/1024).toFixed(1)} KB`);
+    console.log(`[+] Chunk ${chunkIndex} | ${(audioBuf.length/1024).toFixed(1)} KB`);
 
     // Transcribe
     console.log(`    Transcribing chunk ${chunkIndex}…`);
@@ -129,23 +127,27 @@ app.post("/transcribe", authenticate, async (req, res) => {
     console.log(`    → "${transcript}"`);
 
     // Append to per-session temp file
-    if (transcript) appendToTemp(userId, sessionId, transcript);
+    if (transcript) appendToTemp(sessionId, chunkIndex, transcript);
 
     // Delete audio file after transcription
     try { fs.unlinkSync(audioFile); } catch {}
 
     // If this is the final chunk, persist to MongoDB and clean up
     if (isDone) {
-      const txtFile = tempTxtPath(userId, sessionId);
+      const txtFile = tempTxtPath(sessionId);
       let fullText  = "";
       if (fs.existsSync(txtFile)) {
         fullText = fs.readFileSync(txtFile, "utf8").trim();
+        // Remove lines that only contain noise like (upbeat music), [BLANK_AUDIO], etc.
+        fullText = fullText.split('\n').filter(line => {
+          const textPart = line.replace(/^\[.*?\]\s*/, '').trim();
+          return textPart.replace(/\([^)]*\)|\[[^\]]*\]/g, '').trim().length > 0;
+        }).join('\n');
         try { fs.unlinkSync(txtFile); } catch {}
       }
 
       const problemTitle = parseProblemTitle(problemUrl);
       await Transcript.create({
-        userId,
         problemTitle,
         problemLink:     problemUrl,
         audioTranscript: fullText,
@@ -162,9 +164,9 @@ app.post("/transcribe", authenticate, async (req, res) => {
 
 
 // ── Get all transcripts for the user (protected) ─────────────────────────────
-app.get("/transcripts", authenticate, async (req, res) => {
+app.get("/transcripts", async (req, res) => {
   try {
-    const transcripts = await Transcript.find({ userId: req.user.id })
+    const transcripts = await Transcript.find({})
       .sort({ createdAt: -1 })
       .select("problemTitle problemLink audioTranscript createdAt");
     res.json({ transcripts });
@@ -174,9 +176,9 @@ app.get("/transcripts", authenticate, async (req, res) => {
 });
 
 // ── Get single transcript (protected, must belong to user) ────────────────────
-app.get("/transcripts/:id", authenticate, async (req, res) => {
+app.get("/transcripts/:id", async (req, res) => {
   try {
-    const transcript = await Transcript.findOne({ _id: req.params.id, userId: req.user.id });
+    const transcript = await Transcript.findById(req.params.id);
     if (!transcript) return res.status(404).json({ error: "Not found" });
     res.json({ transcript });
   } catch (err) {
@@ -185,9 +187,9 @@ app.get("/transcripts/:id", authenticate, async (req, res) => {
 });
 
 // ── Delete transcript (protected, must belong to user) ────────────────────────
-app.delete("/transcripts/:id", authenticate, async (req, res) => {
+app.delete("/transcripts/:id", async (req, res) => {
   try {
-    const transcript = await Transcript.findOneAndDelete({ _id: req.params.id, userId: req.user.id });
+    const transcript = await Transcript.findByIdAndDelete(req.params.id);
     if (!transcript) return res.status(404).json({ error: "Not found" });
     res.json({ success: true });
   } catch (err) {

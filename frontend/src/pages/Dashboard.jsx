@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useAuth } from '@/context/AuthContext';
+
 import TranscriptCard from '@/components/TranscriptCard';
 import { Button } from '@/components/ui/button';
 import { Mic, RefreshCw, FileText, Download } from 'lucide-react';
@@ -22,7 +22,7 @@ function SkeletonCard() {
 }
 
 export default function Dashboard() {
-    const { user } = useAuth();
+
     const [transcripts, setTranscripts] = useState([]);
     const [loading,     setLoading]     = useState(true);
     const [refreshing,  setRefreshing]  = useState(false);
@@ -62,8 +62,7 @@ export default function Dashboard() {
                         My Transcripts
                     </h1>
                     <p className="text-muted-foreground mt-1">
-                        {user ? `Logged in as ${user.username}` : ''}
-                        {!loading && ` · ${transcripts.length} session${transcripts.length !== 1 ? 's' : ''}`}
+                        {!loading && `${transcripts.length} session${transcripts.length !== 1 ? 's' : ''}`}
                     </p>
                 </div>
                 <Button
