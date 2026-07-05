@@ -114,7 +114,7 @@ app.post("/audio/:sessionId", (req, res) => {
     const sessionId = req.params.sessionId;
     const audioBuf = req.rawBody;
     if (!audioBuf) return res.status(400).json({ error: "Empty body" });
-    const audioFile = path.join(AUDIO_DIR, `${sessionId}.webm`);
+    const audioFile = path.join(AUDIO_DIR, `${sessionId}.wav`);
     fs.writeFileSync(audioFile, audioBuf);
     console.log(`    ✅ Saved full audio recording for session ${sessionId}`);
     res.json({ success: true });
@@ -228,8 +228,10 @@ app.delete("/transcripts/:id", async (req, res) => {
     if (!transcript) return res.status(404).json({ error: "Not found" });
     
     if (transcript.sessionId) {
-      const audioFile = path.join(AUDIO_DIR, `${transcript.sessionId}.webm`);
-      try { fs.unlinkSync(audioFile); } catch {}
+      const audioFileWav = path.join(AUDIO_DIR, `${transcript.sessionId}.wav`);
+      const audioFileWebm = path.join(AUDIO_DIR, `${transcript.sessionId}.webm`);
+      try { fs.unlinkSync(audioFileWav); } catch {}
+      try { fs.unlinkSync(audioFileWebm); } catch {}
     }
 
     res.json({ success: true });

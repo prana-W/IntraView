@@ -137,10 +137,13 @@
         
         try {
           const fullBlob = new Blob(pendingBufs, { type: mimeType });
+          const decoded = await decodeToSamples(fullBlob);
+          const wavBlob = new Blob([encodeWAV(decoded.samples, decoded.sr)], { type: "audio/wav" });
+
           await fetch(`${SERVER}/audio/${sessionId}`, {
             method: "POST",
-            headers: { "Content-Type": mimeType },
-            body: fullBlob
+            headers: { "Content-Type": "audio/wav" },
+            body: wavBlob
           });
         } catch (err) {
           console.error("[IntraView] Failed to upload full audio:", err);

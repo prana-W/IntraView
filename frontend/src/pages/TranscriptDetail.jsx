@@ -194,11 +194,10 @@ export default function TranscriptDetail() {
                     <h3 className="text-sm font-medium text-foreground mb-3 flex items-center gap-2">
                         Listen to Recording
                     </h3>
-                    <audio 
-                        controls 
-                        className="w-full outline-none" 
-                        src={`${BASE}/audio/${transcript.sessionId}.webm`} 
-                    />
+                    <audio controls className="w-full outline-none">
+                        <source src={`${BASE}/audio/${transcript.sessionId}.wav`} type="audio/wav" />
+                        <source src={`${BASE}/audio/${transcript.sessionId}.webm`} type="audio/webm" />
+                    </audio>
                 </div>
             )}
 
