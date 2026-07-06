@@ -1,5 +1,7 @@
 # IntraView
 
+**⚠️ Note: Currently, the transcription model only supports the English language.**
+
 IntraView is an interview preparation tool designed to help you record, transcribe, and review your interviews. It consists of a browser extension for capturing audio, a local server that uses an AI model for high-quality speech-to-text transcription, and a frontend interface to analyze and playback your transcripts. 
 
 ## How it Works

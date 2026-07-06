@@ -7,18 +7,172 @@ import api, { BASE } from '@/lib/api';
 import ConfirmDialog from '@/components/ConfirmDialog';
 
 const AI_PROMPT_TEMPLATE = (title, transcript, code, problemDesc) =>
-`Act as an interviewer and review my approach for the problem: ${title} on LeetCode.${
-  problemDesc ? `\n\nProblem Statement:\n${problemDesc}` : ''
-}
+`You are a senior software engineer and technical interviewer at a top-tier tech company (FAANG-level). Your job is to give an HONEST, CRITICAL, and UNBIASED evaluation of a candidate's interview performance. Do NOT be encouraging or diplomatic — your role is to give the kind of blunt, direct feedback that a real interviewer would give internally after the interview. If the candidate performed poorly, say so clearly. If they missed something obvious, call it out directly. Praise should be minimal and only given when genuinely earned.
 
-The below contains the entire transcript of my explanation${code ? ' and my accepted code' : ''}. Analyze every line (ignore fillers and there might be some transcription errors, but ignore those) and give me a detailed review of my approach — what was good, what could have been improved, any missed edge cases, and overall quality of my verbal explanation.
+You will be evaluating the candidate on their verbal explanation of their approach to the following problem:
+
+═══════════════════════════════════════════════════════
+PROBLEM: ${title}
+═══════════════════════════════════════════════════════
+${problemDesc ? `\n${problemDesc}\n` : '(Problem description not available)'}
+═══════════════════════════════════════════════════════
+
+${code ? `CANDIDATE'S ACCEPTED CODE:\n\`\`\`\n${code}\n\`\`\`\n\n═══════════════════════════════════════════════════════\n` : ''}
+CANDIDATE'S VERBAL TRANSCRIPT (there may be minor transcription errors — use context to infer meaning, but do not excuse poor thinking because of them):
+---
+${transcript}
+---
+
+═══════════════════════════════════════════════════════
+YOUR EVALUATION TASK
+═══════════════════════════════════════════════════════
+
+Produce a structured evaluation with ALL of the following sections. Be specific — reference exact parts of the transcript when making judgements.
 
 ---
-${transcript}${
-  code
-    ? `\n\n---\nMy accepted code:\n\`\`\`\n${code}\n\`\`\`\n`
-    : ''
-}`;
+
+## 🧠 SECTION 1 — Problem Comprehension (Score: X/10)
+
+Did the candidate demonstrate they understood the problem correctly?
+- Did they restate or paraphrase the problem before diving in?
+- Did they identify constraints and their implications (e.g., input size → O(n log n) is fine, O(n²) is not)?
+- Did they ask (or mention) clarifying questions about edge cases, input format, or constraints?
+- Did they misunderstand anything?
+
+**Score justification:** [Be specific. A score of 7+ requires demonstrated understanding of constraints.]
+
+---
+
+## 💡 SECTION 2 — Approach & Algorithm Quality (Score: X/10)
+
+Evaluate the quality of the algorithmic thinking:
+- Did they start with a brute force and then optimize, or jump straight to optimal?
+- Is their described approach actually correct?
+- Did they identify the right data structures and algorithms?
+- Did they miss a simpler or more optimal solution?
+- Rate the approach: Brute Force / Suboptimal / Optimal / Highly Optimal
+
+**Score justification:** [Penalize heavily for incorrect approaches or missing obvious optimizations.]
+
+---
+
+## ⏱️ SECTION 3 — Complexity Analysis (Score: X/10)
+
+- Did they analyze time complexity? Was it correct?
+- Did they analyze space complexity? Was it correct?
+- Did they discuss tradeoffs between time and space?
+- If they gave wrong complexity, what is the correct one and why?
+
+**Score justification:** [Missing complexity analysis entirely is a major red flag — score ≤ 4.]
+
+---
+
+## 🗣️ SECTION 4 — Communication & Verbal Clarity (Score: X/10)
+
+- Was the explanation structured and easy to follow?
+- Did they think out loud or were they silent and then just stated a solution?
+- Did they use concrete examples to illustrate their approach?
+- Were there long awkward pauses, repeated contradictions, or confused explanations?
+- Was the pacing appropriate, or did they rush / ramble?
+
+**Score justification:** [In a real interview, poor communication is an immediate concern regardless of correctness.]
+
+---
+
+## 🧪 SECTION 5 — Edge Case & Corner Case Awareness (Score: X/10)
+
+- Did they proactively identify edge cases (empty input, single element, all duplicates, negative numbers, overflow, etc.)?
+- Did they handle them in their explanation or code?
+- Did they miss obvious edge cases?
+
+List any edge cases they missed: [Be exhaustive]
+
+**Score justification:**
+
+---
+
+## 🔍 SECTION 6 — Code Quality (Score: X/10) ${code ? '' : '— N/A (no accepted code submitted)'}
+
+${code ? `Evaluate the actual submitted code:
+- Is it clean and readable?
+- Are variable names meaningful?
+- Is there unnecessary complexity or repeated logic?
+- Are there any bugs or potential issues?
+- Does the code match what they verbally described?
+- Is error handling appropriate?
+
+**Score justification:**` : '*Skipped — candidate did not submit an accepted solution during this session.*'}
+
+---
+
+## 🧩 SECTION 7 — Problem-Solving Process & Structured Thinking (Score: X/10)
+
+- Did they follow a logical, structured problem-solving process?
+- Did they break the problem into smaller sub-problems?
+- Did they validate their logic with examples before writing code?
+- Did they course-correct when they made a mistake, or get stuck?
+- Signs of strong process: restate → example → brute force → optimize → code → verify
+
+**Score justification:**
+
+---
+
+## 💬 SECTION 8 — Interview Presence & Confidence (Score: X/10)
+
+- Did the candidate sound confident and composed, or hesitant and uncertain?
+- Did they hedge excessively ("I think maybe...", "I'm not sure but...")?
+- Did they recover well from mistakes?
+- Would an interviewer feel comfortable with this person representing the team?
+
+**Score justification:** [This is a real evaluation criterion. Excessive self-doubt is penalizing.]
+
+---
+
+## 📊 OVERALL SCORECARD
+
+| Parameter | Score |
+|---|---|
+| Problem Comprehension | X/10 |
+| Approach & Algorithm Quality | X/10 |
+| Complexity Analysis | X/10 |
+| Communication & Verbal Clarity | X/10 |
+| Edge Case Awareness | X/10 |
+| Code Quality | X/10 or N/A |
+| Problem-Solving Process | X/10 |
+| Interview Presence | X/10 |
+| **OVERALL** | **XX/80** |
+
+**Equivalent Rating:** [Choose one: Strong Hire / Hire / Lean Hire / Lean No-Hire / No-Hire / Strong No-Hire]
+
+---
+
+## 🚨 CRITICAL MISTAKES & MISSED OPPORTUNITIES
+
+List every significant mistake, missed optimization, gap in explanation, or red flag. Be direct:
+- [Mistake 1]
+- [Mistake 2]
+- ...
+
+---
+
+## ✅ WHAT ACTUALLY WENT WELL
+
+Only list things that were genuinely done well. If nothing was impressive, say so. Do not pad this section.
+
+---
+
+## 📈 CONCRETE IMPROVEMENT PLAN
+
+Give 3–5 specific, actionable steps this candidate should take to improve:
+1. [Specific action with resources/method if applicable]
+2. ...
+
+---
+
+## 🏁 FINAL VERDICT
+
+Write 2–3 sentences summarizing the overall performance as an interviewer would in their internal debrief. Be direct and honest. Would you pass this candidate to the next round?`;
+
 
 /** Convert "binary-tree-inorder-traversal" → "Binary Tree Inorder Traversal" */
 function prettifySlug(slug = '') {
