@@ -1,21 +1,37 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, ExternalLink, Copy, Check, Clock, AlertCircle, Trash2 } from 'lucide-react';
+import { ArrowLeft, ExternalLink, Copy, Check, Clock, AlertCircle, Trash2, Code2 } from 'lucide-react';
 import { toast } from 'sonner';
 import api, { BASE } from '@/lib/api';
 import ConfirmDialog from '@/components/ConfirmDialog';
 
-const AI_PROMPT_TEMPLATE = (title, transcript) =>
+const AI_PROMPT_TEMPLATE = (title, transcript, code) =>
 `Act as an interviewer and review my approach for the problem: ${title} on LeetCode.
-The below contains the entire transcript of my explanation. Analyze every line (ignore fillers and there might be some transcription errors, but ignore those) and give me a detailed review of my approach — what was good, what could have been improved, any missed edge cases, and overall quality of my verbal explanation.
+The below contains the entire transcript of my explanation${code ? ' and my accepted code' : ''}. Analyze every line (ignore fillers and there might be some transcription errors, but ignore those) and give me a detailed review of my approach — what was good, what could have been improved, any missed edge cases, and overall quality of my verbal explanation.
 
 ---
-${transcript}`;
+${transcript}${
+  code
+    ? `\n\n---\nMy accepted code:\n\`\`\`\n${code}\n\`\`\`\n`
+    : ''
+}`;
 
 /** Convert "binary-tree-inorder-traversal" → "Binary Tree Inorder Traversal" */
 function prettifySlug(slug = '') {
     return slug.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') || 'Unknown Problem';
+}
+
+/**
+ * LeetCode prepends line numbers directly onto each line (e.g. "1class Solution {").
+ * Split into { num: string, code: string } per line.
+ */
+function parseCodeLines(raw = '') {
+    return raw.split('\n').map(line => {
+        const m = line.match(/^(\d+)(.*)$/);
+        if (m) return { num: m[1], code: m[2] };
+        return { num: '', code: line };
+    });
 }
 
 function formatDateTime(iso) {
@@ -63,6 +79,8 @@ export default function TranscriptDetail() {
     const [isDeleting, setIsDeleting] = useState(false);
     const [showDeleteDialog, setShowDeleteDialog] = useState(false);
     const [activeIdx,  setActiveIdx]  = useState(-1);
+    const [codeCopied, setCodeCopied] = useState(false);
+    const [showCode,   setShowCode]   = useState(false);
 
     const audioRef      = useRef(null);
     const lineRefs      = useRef([]);
@@ -116,12 +134,21 @@ export default function TranscriptDetail() {
     const handleCopy = useCallback(() => {
         if (!transcript) return;
         const title = prettifySlug(transcript.problemTitle);
-        const full  = AI_PROMPT_TEMPLATE(title, transcript.audioTranscript || '(no transcript)');
+        const full  = AI_PROMPT_TEMPLATE(title, transcript.audioTranscript || '(no transcript)', transcript.codeSnapshot || '');
         navigator.clipboard.writeText(full).then(() => {
             setCopied(true);
             toast.success('Copied with AI review prompt! 🚀');
             setTimeout(() => setCopied(false), 2500);
         }).catch(() => toast.error('Failed to copy'));
+    }, [transcript]);
+
+    const handleCodeCopy = useCallback(() => {
+        if (!transcript?.codeSnapshot) return;
+        navigator.clipboard.writeText(transcript.codeSnapshot).then(() => {
+            setCodeCopied(true);
+            toast.success('Code copied!');
+            setTimeout(() => setCodeCopied(false), 2500);
+        }).catch(() => toast.error('Failed to copy code'));
     }, [transcript]);
 
     const handleDelete = useCallback(async () => {
@@ -242,14 +269,6 @@ export default function TranscriptDetail() {
                 </div>
             </div>
 
-            {/* AI Prompt preview box */}
-            <div className="mb-8 p-4 rounded-xl border border-primary/20 bg-primary/5 text-sm text-muted-foreground leading-relaxed">
-                <p className="font-medium text-foreground mb-1">What "Copy with AI Prompt" sends:</p>
-                <p className="italic">
-                    "Act as an interviewer and review my approach for <strong className="not-italic text-primary">{title}</strong> on LeetCode.
-                    Analyze every line, ignore fillers and transcription errors, and give a detailed review…"
-                </p>
-            </div>
 
             {/* Divider */}
             <div className="border-t border-border mb-8" />
@@ -264,6 +283,68 @@ export default function TranscriptDetail() {
                         <source src={`${BASE}/audio/${transcript.sessionId}.wav`} type="audio/wav" />
                         <source src={`${BASE}/audio/${transcript.sessionId}.webm`} type="audio/webm" />
                     </audio>
+                </div>
+            )}
+
+            {/* Code Snapshot — only shown when user had an accepted submission */}
+            {transcript.codeSnapshot && (
+                <div className="mb-8">
+                    <div className="flex items-center justify-between mb-3">
+                        <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                            <Code2 className="w-4 h-4 text-green-500" />
+                            Accepted Code
+                        </h3>
+                        <div className="flex items-center gap-2">
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setShowCode(v => !v)}
+                                className="gap-1.5 h-7 text-xs text-muted-foreground"
+                            >
+                                {showCode ? 'Hide code' : 'Show code'}
+                            </Button>
+                            {showCode && (
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={handleCodeCopy}
+                                    className="gap-1.5 h-7 text-xs text-muted-foreground"
+                                >
+                                    {codeCopied
+                                        ? <><Check className="w-3 h-3" /> Copied!</>
+                                        : <><Copy className="w-3 h-3" /> Copy</>
+                                    }
+                                </Button>
+                            )}
+                        </div>
+                    </div>
+                    {showCode && (
+                        <div className="relative rounded-xl border border-green-500/20 bg-[#0d1117] overflow-hidden">
+                            <div className="flex items-center gap-2 px-4 py-2 border-b border-green-500/10 bg-green-500/5">
+                                <div className="w-2 h-2 rounded-full bg-green-500" />
+                                <span className="text-xs text-green-500/80 font-medium">Accepted submission</span>
+                            </div>
+                            <div className="overflow-x-auto overflow-y-auto max-h-96">
+                                <table className="w-full border-collapse">
+                                    <tbody>
+                                        {parseCodeLines(transcript.codeSnapshot).map((line, i) => (
+                                            <tr key={i} className="group hover:bg-white/[0.03] transition-colors">
+                                                {/* Line number gutter */}
+                                                <td className="select-none text-right pr-4 pl-4 py-0.5 border-r border-white/[0.06] w-12 shrink-0"
+                                                    style={{ color: `hsl(${200 + (i * 7) % 60}, 60%, 55%)`, opacity: 0.6 }}>
+                                                    <span className="font-mono text-[11px]">{line.num || i + 1}</span>
+                                                </td>
+                                                {/* Code */}
+                                                <td className="pl-5 pr-4 py-0.5">
+                                                    <span className="font-mono text-[12px] text-[#e6edf3] whitespace-pre">{line.code}</span>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
                 </div>
             )}
 

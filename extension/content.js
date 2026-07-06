@@ -1,11 +1,12 @@
 (function () {
   "use strict";
 
-  const SERVER   = "http://localhost:8765";
-  const BTN_ID   = "intraview-record-btn";
-  const TOAST_ID = "intraview-toast";
-  const DOT_ID   = "intraview-indicator";
-  const CHUNK_MS = 25_000;
+  const SERVER        = "http://localhost:8765";
+  const BTN_ID        = "intraview-record-btn";
+  const TOAST_ID      = "intraview-toast";
+  const DOT_ID        = "intraview-indicator";
+  const CHUNK_MS      = 25_000;
+  const LS_CODE_KEY   = "iv_accepted_code";
 
   let isRecording   = false;
   let micStream     = null;
@@ -73,18 +74,32 @@
 
     if (delta.length === 0 && !isDone) return;
 
+    // On final flush: read accepted code from localStorage (if any)
+    let codeSnapshotB64 = "";
+    if (isDone) {
+      const code = localStorage.getItem(LS_CODE_KEY) || "";
+      if (code) {
+        codeSnapshotB64 = btoa(unescape(encodeURIComponent(code)));
+        console.log(`[IntraView] Sending accepted code snapshot (${code.length} chars)`);
+        localStorage.removeItem(LS_CODE_KEY); // consumed — clear it
+      }
+    }
+
     try {
 
       const wav = new Blob([encodeWAV(delta, sr)], { type: "audio/wav" });
+      const headers = {
+        "Content-Type":      "audio/wav",
+        "X-Session-Id":      sessionId,
+        "X-Chunk-Index":     String(idx),
+        "X-Problem-Url":     window.location.href,
+        "X-Recording-Done":  isDone ? "true" : "false",
+      };
+      if (codeSnapshotB64) headers["X-Code-Snapshot"] = codeSnapshotB64;
+
       const res = await fetch(`${SERVER}/transcribe`, {
         method:  "POST",
-        headers: {
-          "Content-Type":    "audio/wav",
-          "X-Session-Id":    sessionId,
-          "X-Chunk-Index":   String(idx),
-          "X-Problem-Url":   window.location.href,
-          "X-Recording-Done": isDone ? "true" : "false",
-        },
+        headers,
         body: wav,
       });
 
@@ -115,6 +130,7 @@
     chunkIndex   = 0;
     sessionId    = `iv-${Date.now()}`;
     isRecording  = true;
+    localStorage.removeItem(LS_CODE_KEY); // clear any stale accepted code from a prior session
 
     mediaRecorder = new MediaRecorder(micStream, { mimeType });
     mediaRecorder.ondataavailable = e => { if (e.data.size > 0) pendingBufs.push(e.data); };
@@ -210,9 +226,36 @@
     if (document.querySelector("nav, header, [class*='NavBar']")) createButton();
   }
 
+  // Watch for LeetCode's "Accepted" result and capture the submitted code.
+  // The submitted code appears in a <pre><code> block inside the result panel.
+  function watchForAcceptedResult() {
+    let lastSeenCode = null; // avoid re-capturing the same submission
+
+    const observer = new MutationObserver(() => {
+      const resultEl = document.querySelector('[data-e2e-locator="submission-result"]');
+      if (!resultEl) return;
+      if (resultEl.textContent.trim() !== "Accepted") return;
+
+      // Find the submitted code block — LeetCode renders it in a <pre><code> element
+      const codeEl = document.querySelector("pre code");
+      if (!codeEl) return;
+
+      const code = codeEl.textContent.trim();
+      if (!code || code === lastSeenCode) return; // nothing new
+
+      lastSeenCode = code;
+      localStorage.setItem(LS_CODE_KEY, code);
+      console.log(`[IntraView] ✅ Accepted — code captured (${code.length} chars)`);
+      showToast("✅ Code captured from accepted submission!", "success");
+    });
+
+    observer.observe(document.body, { childList: true, subtree: true });
+  }
+
   async function init() {
     tryInject();
     new MutationObserver(tryInject).observe(document.body, { childList: true, subtree: true });
+    watchForAcceptedResult();
   }
 
   let lastHref = location.href;

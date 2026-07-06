@@ -82,7 +82,7 @@ app.use(cors({
   origin: "*",          
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization", "X-Session-Id", "X-Chunk-Index",
-                   "X-Problem-Url", "X-Recording-Done"],
+                   "X-Problem-Url", "X-Recording-Done", "X-Code-Snapshot"],
 }));
 
 // Global request logger
@@ -130,10 +130,14 @@ app.post("/transcribe", async (req, res) => {
     if (!audioBuf || audioBuf.length < 44)
       return res.status(400).json({ error: "Empty or invalid WAV body" });
 
-    const sessionId   = (req.headers["x-session-id"]   ?? "unknown").slice(0, 40);
-    const chunkIndex  = String(req.headers["x-chunk-index"] ?? "0").padStart(3, "0");
-    const problemUrl  = req.headers["x-problem-url"]  ?? "";
-    const isDone      = req.headers["x-recording-done"] === "true";
+    const sessionId    = (req.headers["x-session-id"]   ?? "unknown").slice(0, 40);
+    const chunkIndex   = String(req.headers["x-chunk-index"] ?? "0").padStart(3, "0");
+    const problemUrl   = req.headers["x-problem-url"]  ?? "";
+    const isDone       = req.headers["x-recording-done"] === "true";
+    // Decode accepted code snapshot — only present on final chunk if user got Accepted
+    const codeSnapshot = isDone && req.headers["x-code-snapshot"]
+      ? Buffer.from(req.headers["x-code-snapshot"], "base64").toString("utf8")
+      : "";
 
     // Enqueue transcription to avoid concurrent Whisper model executions
     const { transcript, done } = await transcriptionQueue.enqueue(async () => {
@@ -178,11 +182,15 @@ app.post("/transcribe", async (req, res) => {
         }
 
         const problemTitle = parseProblemTitle(problemUrl);
+        if (codeSnapshot) {
+          console.log(`    📄 Accepted code snapshot received (${codeSnapshot.length} chars)`);
+        }
         await Transcript.create({
           sessionId,
           problemTitle,
           problemLink:     problemUrl,
           audioTranscript: fullText,
+          codeSnapshot,
         });
         console.log(`    ✅ Transcript saved to MongoDB (problem: ${problemTitle})\n`);
       }
@@ -203,7 +211,7 @@ app.get("/transcripts", async (req, res) => {
   try {
     const transcripts = await Transcript.find({})
       .sort({ createdAt: -1 })
-      .select("sessionId problemTitle problemLink audioTranscript createdAt");
+      .select("sessionId problemTitle problemLink audioTranscript codeSnapshot createdAt");
     res.json({ transcripts });
   } catch (err) {
     res.status(500).json({ error: err.message });
