@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, ExternalLink, Copy, Check, Clock, AlertCircle, Trash2 } from 'lucide-react';
@@ -30,12 +30,27 @@ function parseLines(raw = '') {
     return raw
         .split('\n')
         .map(line => {
-            const m = line.match(/^\[(\d{2}:\d{2}:\d{2})\]\s*(.+)$/);
-            if (m) return { timestamp: m[1], text: m[2] };
-            if (line.trim()) return { timestamp: null, text: line.trim() };
+            const m = line.match(/^\[(\d{2}):(\d{2}):(\d{2})\]\s*(.+)$/);
+            if (m) {
+                const seconds = parseInt(m[1], 10) * 3600 + parseInt(m[2], 10) * 60 + parseInt(m[3], 10);
+                return { timestamp: `${m[1]}:${m[2]}:${m[3]}`, seconds, text: m[4] };
+            }
+            if (line.trim()) return { timestamp: null, seconds: null, text: line.trim() };
             return null;
         })
         .filter(Boolean);
+}
+
+/** Given current audio time and parsed lines, return the index of the active line */
+function getActiveIndex(lines, currentTime) {
+    if (currentTime == null || lines.length === 0) return -1;
+    let active = -1;
+    for (let i = 0; i < lines.length; i++) {
+        if (lines[i].seconds == null) continue;
+        if (currentTime >= lines[i].seconds) active = i;
+        else break;
+    }
+    return active;
 }
 
 export default function TranscriptDetail() {
@@ -47,6 +62,12 @@ export default function TranscriptDetail() {
     const [copied,     setCopied]     = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
     const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+    const [activeIdx,  setActiveIdx]  = useState(-1);
+
+    const audioRef      = useRef(null);
+    const lineRefs      = useRef([]);
+    const userScrolling = useRef(false);
+    const scrollTimer   = useRef(null);
 
     useEffect(() => {
         api.get(`/transcripts/${id}`)
@@ -54,6 +75,43 @@ export default function TranscriptDetail() {
             .catch(err => setError(err.message))
             .finally(() => setLoading(false));
     }, [id]);
+
+    /* ── Audio time tracking ── */
+    useEffect(() => {
+        const audio = audioRef.current;
+        if (!audio || !transcript) return;
+
+        const lines = parseLines(transcript.audioTranscript);
+
+        const onTimeUpdate = () => {
+            const idx = getActiveIndex(lines, audio.currentTime);
+            setActiveIdx(idx);
+
+            // Auto-scroll only if user isn't manually scrolling
+            if (!userScrolling.current && idx >= 0 && lineRefs.current[idx]) {
+                lineRefs.current[idx].scrollIntoView({
+                    behavior: 'smooth',
+                    block: 'nearest',
+                });
+            }
+        };
+
+        audio.addEventListener('timeupdate', onTimeUpdate);
+        return () => audio.removeEventListener('timeupdate', onTimeUpdate);
+    }, [transcript]);
+
+    /* ── Detect manual scroll to pause auto-scroll briefly ── */
+    useEffect(() => {
+        const onScroll = () => {
+            userScrolling.current = true;
+            clearTimeout(scrollTimer.current);
+            scrollTimer.current = setTimeout(() => {
+                userScrolling.current = false;
+            }, 3000);
+        };
+        window.addEventListener('scroll', onScroll, { passive: true });
+        return () => window.removeEventListener('scroll', onScroll);
+    }, []);
 
     const handleCopy = useCallback(() => {
         if (!transcript) return;
@@ -78,6 +136,14 @@ export default function TranscriptDetail() {
             setIsDeleting(false);
         }
     }, [transcript, navigate]);
+
+    /** Seek audio to a line's timestamp on click */
+    const seekTo = useCallback((seconds) => {
+        if (audioRef.current && seconds != null) {
+            audioRef.current.currentTime = seconds;
+            audioRef.current.play().catch(() => {});
+        }
+    }, []);
 
     /* ── Loading ── */
     if (loading) {
@@ -194,7 +260,7 @@ export default function TranscriptDetail() {
                     <h3 className="text-sm font-medium text-foreground mb-3 flex items-center gap-2">
                         Listen to Recording
                     </h3>
-                    <audio controls className="w-full outline-none">
+                    <audio ref={audioRef} controls className="w-full outline-none">
                         <source src={`${BASE}/audio/${transcript.sessionId}.wav`} type="audio/wav" />
                         <source src={`${BASE}/audio/${transcript.sessionId}.webm`} type="audio/webm" />
                     </audio>
@@ -208,25 +274,43 @@ export default function TranscriptDetail() {
                 </div>
             ) : (
                 <div className="space-y-1">
-                    {lines.map((line, idx) => (
-                        <div
-                            key={idx}
-                            className="group flex gap-4 items-baseline py-2.5 px-3 rounded-lg hover:bg-muted/50 transition-colors"
-                        >
-                            {/* Timestamp */}
-                            <span className="shrink-0 font-mono text-xs text-muted-foreground/60 group-hover:text-primary/70 transition-colors w-16 text-right">
-                                {line.timestamp || '—'}
-                            </span>
+                    {lines.map((line, idx) => {
+                        const isActive = idx === activeIdx;
+                        return (
+                            <div
+                                key={idx}
+                                ref={el => lineRefs.current[idx] = el}
+                                onClick={() => seekTo(line.seconds)}
+                                className={`group flex gap-4 items-baseline py-2.5 px-3 rounded-lg transition-all duration-300 ${
+                                    line.seconds != null ? 'cursor-pointer' : ''
+                                } ${
+                                    isActive
+                                        ? 'bg-primary/10 border border-primary/20 shadow-sm'
+                                        : 'hover:bg-muted/50 border border-transparent'
+                                }`}
+                                title={line.seconds != null ? `Seek to ${line.timestamp}` : undefined}
+                            >
+                                {/* Timestamp */}
+                                <span
+                                    className={`shrink-0 font-mono text-xs w-16 text-right transition-colors select-none ${
+                                        isActive
+                                            ? 'text-primary font-semibold'
+                                            : 'text-muted-foreground/60 group-hover:text-primary/70'
+                                    }`}
+                                >
+                                    {line.timestamp || '—'}
+                                </span>
 
-                            {/* Divider */}
-                            <span className="shrink-0 w-px h-4 bg-border self-center" />
+                                {/* Divider */}
+                                <span className={`shrink-0 w-px h-4 self-center transition-colors ${isActive ? 'bg-primary/40' : 'bg-border'}`} />
 
-                            {/* Text */}
-                            <p className="text-sm leading-relaxed text-foreground/90">
-                                {line.text}
-                            </p>
-                        </div>
-                    ))}
+                                {/* Text */}
+                                <p className={`text-sm leading-relaxed transition-colors ${isActive ? 'text-foreground font-medium' : 'text-foreground/90'}`}>
+                                    {line.text}
+                                </p>
+                            </div>
+                        );
+                    })}
                 </div>
             )}
             

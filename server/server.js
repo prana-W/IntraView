@@ -67,7 +67,7 @@ function tempTxtPath(sessionId) {
 
 function appendToTemp(sessionId, chunkIndex, text) {
   const idx = parseInt(chunkIndex, 10) || 0;
-  const totalSeconds = idx * 25;
+  const totalSeconds = idx * 30;
   const h = Math.floor(totalSeconds / 3600).toString().padStart(2, "0");
   const m = Math.floor((totalSeconds % 3600) / 60).toString().padStart(2, "0");
   const s = (totalSeconds % 60).toString().padStart(2, "0");
