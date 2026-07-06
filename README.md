@@ -52,13 +52,23 @@ pm2 start ecosystem.config.js
 **⏳ Important:** After starting the ecosystem, **wait for at least 10 minutes**. The server needs this time to download the transcription model locally on the first run.
 
 ### 6. Auto-Start on Boot
+
+**For Windows:**
+PM2's native startup command doesn't work out-of-the-box on Windows. You'll need to use a package called `pm2-windows-service`. Open a terminal as **Administrator** and run:
+```bash
+npm install -g pm2-windows-service
+pm2-service-install
+```
+*(If prompted, allow it to set the `PM2_HOME` environment variable).*
+
+**For Linux/macOS:**
 To ensure that IntraView automatically starts up whenever your computer reboots, run the following command to generate a startup script:
 ```bash
 pm2 startup
 ```
 *Note: PM2 will output a specific command that you need to copy and paste into your terminal to configure the startup system.*
 
-Once you have run the generated startup command, save the current PM2 process list so it remembers to start IntraView:
+Once you have run the generated startup command (on Linux) or installed the service (on Windows), save the current PM2 process list so it remembers to start IntraView:
 ```bash
 pm2 save
 ```

@@ -22,6 +22,9 @@ for (const dir of [TRANSCRIPTS_DIR, AUDIO_DIR]) {
 await mongoose.connect(process.env.MONGO_URI);
 console.log(`✅ MongoDB connected: ${process.env.MONGO_URI}\n`);
 
+console.log("⏳ Initializing Whisper transcription model...");
+console.log("ℹ️  Note: If this is the first run, it may take 10+ minutes to download the model (~1 GB) depending on your internet connection.\n");
+
 const transcriber = await pipeline(
   "automatic-speech-recognition",
   "Xenova/whisper-medium.en",
