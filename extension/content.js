@@ -4,8 +4,8 @@
   const SERVER        = "http://localhost:8765";
   const BTN_ID        = "intraview-record-btn";
   const TOAST_ID      = "intraview-toast";
-  const DOT_ID        = "intraview-indicator";
-  const CHUNK_MS      = 25_000;
+
+  const CHUNK_MS      = 30_000;
   const LS_CODE_KEY    = "iv_accepted_code";
   const LS_PROBLEM_KEY = "iv_problem_desc";
 
@@ -156,8 +156,8 @@
     mediaRecorder.start(500);
 
     flushTimer = setInterval(() => flushChunk(false), CHUNK_MS);
-    updateButton(); setDot(true);
-    showToast("🎙️ Recording — flushing every 25 s.", "success");
+    updateButton();
+    showToast("Recording started!", "success");
   }
 
   function stopRecording() {
@@ -190,8 +190,8 @@
       mediaRecorder.stop();
     }
 
-    updateButton(); setDot(false);
-    showToast("⏹️ Stopped — sending final chunk…", "info");
+    updateButton();
+    showToast("Recording stopped...", "info");
   }
 
   function toggleRecording() {
@@ -210,13 +210,13 @@
     }
   }
 
-  function setDot(on) { const d=document.getElementById(DOT_ID); if(d) d.style.display=on?"block":"none"; }
+
 
   function createButton() {
     if (document.getElementById(BTN_ID)) return;
     const btn = document.createElement("button");
     btn.id = BTN_ID; btn.title = "Start voice recording";
-    btn.innerHTML = `<span class="iv-btn-label">IntraView</span><span id="${DOT_ID}" class="iv-pulse-dot" style="display:none;"></span>`;
+    btn.innerHTML = `<span class="iv-btn-label">IntraView</span>`;
     btn.addEventListener("click", toggleRecording);
     const sel = ["nav","[class*='NavBar']","[class*='header']","header","#__next nav"];
     for (const s of sel) {
@@ -265,7 +265,7 @@
       lastSeenCode = code;
       localStorage.setItem(LS_CODE_KEY, code);
       console.log(`[IntraView] ✅ Accepted — code captured (${code.length} chars)`);
-      showToast("✅ Code captured from accepted submission!", "success");
+      // showToast("Code captured from accepted submission!", "success");
     });
 
     observer.observe(document.body, { childList: true, subtree: true });

@@ -64,3 +64,10 @@ pm2 save
 ```
 
 You are now ready to use IntraView!
+
+---
+
+<div align="center">
+  <b>Made with ❤️ by <a href="https://www.linkedin.com/in/pranaw-kumar-710331215">Pranaw Kumar</a></b><br>
+  If you found this project helpful, please consider giving it a ⭐ on the <a href="https://github.com/prana-W/intraview">GitHub Repository</a>!
+</div>
