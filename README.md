@@ -1,11 +1,9 @@
 # IntraView
 
-**⚠️ Note: The entire project is vibe-coded, so the code might not be polished or of the best quality as of now.**
-
 IntraView is an interview preparation tool designed to help you record, transcribe, and review your interviews. It consists of a browser extension for capturing audio, a local server that uses an AI model for high-quality speech-to-text transcription, and a frontend interface to analyze and playback your transcripts. 
 
 ## How it Works
-When you are on LeetCode during a problem, an IntraView button will appear. You can click on this button to start recording your audio. The extension sends the recorded audio to the local server for transcription. After you stop the recording, you can navigate to the local frontend (at `http://localhost:6767`) to view the transcription, listen to the audio playback, and easily copy a prompt to add to an AI for further analysis.
+When you are on LeetCode during a problem, an IntraView button will appear. You can click on this button to start recording your audio. The extension sends the recorded audio to the local server for transcription. It also automatically captures the problem description and your accepted code solution. After you stop the recording, you can navigate to the local frontend (at `http://localhost:6767`) to view the transcription, listen to the audio playback, and easily copy a comprehensive prompt (which includes your transcript, the problem statement, and your code) to add to an AI for deep review and analysis.
 
 ## Setup Instructions
 

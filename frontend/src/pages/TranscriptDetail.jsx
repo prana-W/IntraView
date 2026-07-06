@@ -1,13 +1,16 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, ExternalLink, Copy, Check, Clock, AlertCircle, Trash2, Code2 } from 'lucide-react';
+import { ArrowLeft, ExternalLink, Copy, Check, Clock, AlertCircle, Trash2, Code2, FileText } from 'lucide-react';
 import { toast } from 'sonner';
 import api, { BASE } from '@/lib/api';
 import ConfirmDialog from '@/components/ConfirmDialog';
 
-const AI_PROMPT_TEMPLATE = (title, transcript, code) =>
-`Act as an interviewer and review my approach for the problem: ${title} on LeetCode.
+const AI_PROMPT_TEMPLATE = (title, transcript, code, problemDesc) =>
+`Act as an interviewer and review my approach for the problem: ${title} on LeetCode.${
+  problemDesc ? `\n\nProblem Statement:\n${problemDesc}` : ''
+}
+
 The below contains the entire transcript of my explanation${code ? ' and my accepted code' : ''}. Analyze every line (ignore fillers and there might be some transcription errors, but ignore those) and give me a detailed review of my approach — what was good, what could have been improved, any missed edge cases, and overall quality of my verbal explanation.
 
 ---
@@ -80,7 +83,8 @@ export default function TranscriptDetail() {
     const [showDeleteDialog, setShowDeleteDialog] = useState(false);
     const [activeIdx,  setActiveIdx]  = useState(-1);
     const [codeCopied, setCodeCopied] = useState(false);
-    const [showCode,   setShowCode]   = useState(false);
+    const [showCode,    setShowCode]   = useState(false);
+    const [showProblem, setShowProblem] = useState(false);
 
     const audioRef      = useRef(null);
     const lineRefs      = useRef([]);
@@ -134,7 +138,12 @@ export default function TranscriptDetail() {
     const handleCopy = useCallback(() => {
         if (!transcript) return;
         const title = prettifySlug(transcript.problemTitle);
-        const full  = AI_PROMPT_TEMPLATE(title, transcript.audioTranscript || '(no transcript)', transcript.codeSnapshot || '');
+        const full  = AI_PROMPT_TEMPLATE(
+            title,
+            transcript.audioTranscript || '(no transcript)',
+            transcript.codeSnapshot || '',
+            transcript.problemDescription || ''
+        );
         navigator.clipboard.writeText(full).then(() => {
             setCopied(true);
             toast.success('Copied with AI review prompt! 🚀');
@@ -283,6 +292,37 @@ export default function TranscriptDetail() {
                         <source src={`${BASE}/audio/${transcript.sessionId}.wav`} type="audio/wav" />
                         <source src={`${BASE}/audio/${transcript.sessionId}.webm`} type="audio/webm" />
                     </audio>
+                </div>
+            )}
+
+            {/* Problem Description */}
+            {transcript.problemDescription && (
+                <div className="mb-8">
+                    <div className="flex items-center justify-between mb-3">
+                        <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                            <FileText className="w-4 h-4 text-primary" />
+                            Problem
+                        </h3>
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setShowProblem(v => !v)}
+                            className="gap-1.5 h-7 text-xs text-muted-foreground"
+                        >
+                            {showProblem ? 'Hide problem' : 'Show problem'}
+                        </Button>
+                    </div>
+                    {showProblem && (
+                        <div className="rounded-xl border border-border bg-card overflow-hidden">
+                            <div className="flex items-center gap-2 px-4 py-2 border-b border-border bg-muted/30">
+                                <div className="w-2 h-2 rounded-full bg-primary" />
+                                <span className="text-xs text-muted-foreground font-medium">Problem statement</span>
+                            </div>
+                            <pre className="overflow-x-auto p-4 text-[13px] text-foreground font-sans leading-relaxed max-h-96 whitespace-pre-wrap">
+                                {transcript.problemDescription}
+                            </pre>
+                        </div>
+                    )}
                 </div>
             )}
 

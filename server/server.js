@@ -82,7 +82,7 @@ app.use(cors({
   origin: "*",          
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization", "X-Session-Id", "X-Chunk-Index",
-                   "X-Problem-Url", "X-Recording-Done", "X-Code-Snapshot"],
+                   "X-Problem-Url", "X-Recording-Done", "X-Code-Snapshot", "X-Problem-Description"],
 }));
 
 // Global request logger
@@ -138,6 +138,10 @@ app.post("/transcribe", async (req, res) => {
     const codeSnapshot = isDone && req.headers["x-code-snapshot"]
       ? Buffer.from(req.headers["x-code-snapshot"], "base64").toString("utf8")
       : "";
+    // Decode problem description — captured at recording-start from LeetCode's description div
+    const problemDescription = isDone && req.headers["x-problem-description"]
+      ? Buffer.from(req.headers["x-problem-description"], "base64").toString("utf8")
+      : "";
 
     // Enqueue transcription to avoid concurrent Whisper model executions
     const { transcript, done } = await transcriptionQueue.enqueue(async () => {
@@ -188,9 +192,10 @@ app.post("/transcribe", async (req, res) => {
         await Transcript.create({
           sessionId,
           problemTitle,
-          problemLink:     problemUrl,
-          audioTranscript: fullText,
+          problemLink:        problemUrl,
+          audioTranscript:    fullText,
           codeSnapshot,
+          problemDescription,
         });
         console.log(`    ✅ Transcript saved to MongoDB (problem: ${problemTitle})\n`);
       }
@@ -211,7 +216,7 @@ app.get("/transcripts", async (req, res) => {
   try {
     const transcripts = await Transcript.find({})
       .sort({ createdAt: -1 })
-      .select("sessionId problemTitle problemLink audioTranscript codeSnapshot createdAt");
+      .select("sessionId problemTitle problemLink audioTranscript codeSnapshot problemDescription createdAt");
     res.json({ transcripts });
   } catch (err) {
     res.status(500).json({ error: err.message });

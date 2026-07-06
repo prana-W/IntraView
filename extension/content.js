@@ -6,7 +6,8 @@
   const TOAST_ID      = "intraview-toast";
   const DOT_ID        = "intraview-indicator";
   const CHUNK_MS      = 25_000;
-  const LS_CODE_KEY   = "iv_accepted_code";
+  const LS_CODE_KEY    = "iv_accepted_code";
+  const LS_PROBLEM_KEY = "iv_problem_desc";
 
   let isRecording   = false;
   let micStream     = null;
@@ -97,6 +98,13 @@
       };
       if (codeSnapshotB64) headers["X-Code-Snapshot"] = codeSnapshotB64;
 
+      // On final flush: attach problem description if captured
+      const problemDesc = isDone ? (localStorage.getItem(LS_PROBLEM_KEY) || "") : "";
+      if (problemDesc) {
+        headers["X-Problem-Description"] = btoa(unescape(encodeURIComponent(problemDesc)));
+        localStorage.removeItem(LS_PROBLEM_KEY);
+      }
+
       const res = await fetch(`${SERVER}/transcribe`, {
         method:  "POST",
         headers,
@@ -131,6 +139,17 @@
     sessionId    = `iv-${Date.now()}`;
     isRecording  = true;
     localStorage.removeItem(LS_CODE_KEY); // clear any stale accepted code from a prior session
+
+    // Capture the problem description text at recording-start time
+    const descEl = document.querySelector('[data-track-load="description_content"]');
+    if (descEl) {
+      // innerText gives clean readable text with newlines preserved
+      const descText = descEl.innerText.trim().slice(0, 6000); // cap at 6 KB of text
+      if (descText) {
+        localStorage.setItem(LS_PROBLEM_KEY, descText);
+        console.log(`[IntraView] Problem description captured (${descText.length} chars)`);
+      }
+    }
 
     mediaRecorder = new MediaRecorder(micStream, { mimeType });
     mediaRecorder.ondataavailable = e => { if (e.data.size > 0) pendingBufs.push(e.data); };
