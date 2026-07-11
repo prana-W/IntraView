@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 
 import TranscriptCard from '@/components/TranscriptCard';
 import { Button } from '@/components/ui/button';
-import { Mic, RefreshCw, FileText, Download } from 'lucide-react';
+import { Mic, FileText, Download, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import api from '@/lib/api';
 
@@ -25,19 +25,15 @@ export default function Dashboard() {
 
     const [transcripts, setTranscripts] = useState([]);
     const [loading,     setLoading]     = useState(true);
-    const [refreshing,  setRefreshing]  = useState(false);
-
-    async function fetchTranscripts(isRefresh = false) {
-        if (isRefresh) setRefreshing(true);
-        else setLoading(true);
+    async function fetchTranscripts(isSilent = false) {
+        if (!isSilent) setLoading(true);
         try {
             const data = await api.get('/transcripts');
             setTranscripts(data.transcripts || []);
         } catch (err) {
-            toast.error(`Failed to load transcripts: ${err.message}`);
+            if (!isSilent) toast.error(`Failed to load transcripts: ${err.message}`);
         } finally {
-            setLoading(false);
-            setRefreshing(false);
+            if (!isSilent) setLoading(false);
         }
     }
 
@@ -51,7 +47,21 @@ export default function Dashboard() {
         }
     }
 
-    useEffect(() => { fetchTranscripts(); }, []);
+    async function handleDeleteAll() {
+        if (!window.confirm("Are you sure you want to delete all transcripts? This cannot be undone.")) return;
+        try {
+            await api.delete('/transcripts');
+            setTranscripts([]);
+            toast.success("All transcripts deleted successfully");
+        } catch (err) {
+            toast.error(`Failed to delete all transcripts: ${err.message}`);
+        }
+    }
+    useEffect(() => { 
+        fetchTranscripts(); 
+        const intervalId = setInterval(() => fetchTranscripts(true), 5000);
+        return () => clearInterval(intervalId);
+    }, []);
 
     return (
         <div className="w-full max-w-6xl mx-auto px-4 py-10">
@@ -65,16 +75,18 @@ export default function Dashboard() {
                         {!loading && `${transcripts.length} session${transcripts.length !== 1 ? 's' : ''}`}
                     </p>
                 </div>
-                <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => fetchTranscripts(true)}
-                    disabled={loading || refreshing}
-                    className="gap-2"
-                >
-                    <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-                    Refresh
-                </Button>
+                {transcripts.length > 0 && (
+                    <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={handleDeleteAll}
+                        disabled={loading}
+                        className="gap-2 bg-red-600 hover:bg-red-700 text-white"
+                    >
+                        <Trash2 className="w-4 h-4" />
+                        Delete All
+                    </Button>
+                )}
             </div>
 
             {/* Loading skeletons */}

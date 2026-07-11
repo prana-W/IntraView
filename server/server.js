@@ -5,7 +5,7 @@ import mongoose        from "mongoose";
 import fs              from "fs";
 import path            from "path";
 import { fileURLToPath } from "url";
-import { pipeline, env } from "@xenova/transformers";
+import { Worker } from "worker_threads";
 
 import Transcript      from "./models/Transcript.js";
 
@@ -22,16 +22,34 @@ for (const dir of [TRANSCRIPTS_DIR, AUDIO_DIR]) {
 await mongoose.connect(process.env.MONGO_URI);
 console.log(`✅ MongoDB connected: ${process.env.MONGO_URI}\n`);
 
-console.log("⏳ Initializing Whisper transcription model...");
+console.log("⏳ Spawning transcription worker thread...");
 console.log("ℹ️  Note: If this is the first run, it may take 10+ minutes to download the model (~1 GB) depending on your internet connection.\n");
 
-const transcriber = await pipeline(
-  "automatic-speech-recognition",
-  "Xenova/whisper-medium.en",
-  { quantized: true }
-);
+const worker = new Worker(path.join(__dirname, "transcriptionWorker.js"));
+const pendingTasks = new Map();
+let taskIdCounter = 0;
 
-console.log("✅ Whisper model ready!\n");
+worker.on("message", (msg) => {
+  if (msg.type === "ready") {
+    console.log("✅ Whisper model ready (in worker thread)!\n");
+  } else if (msg.type === "result" || msg.type === "error") {
+    const p = pendingTasks.get(msg.id);
+    if (p) {
+      if (msg.type === "result") p.resolve(msg.text);
+      else p.reject(new Error(msg.error));
+      pendingTasks.delete(msg.id);
+    }
+  }
+});
+
+function transcribeInWorker(samples) {
+  return new Promise((resolve, reject) => {
+    const id = taskIdCounter++;
+    pendingTasks.set(id, { resolve, reject });
+    // Transfer the underlying ArrayBuffer to the worker to avoid memory duplication
+    worker.postMessage({ type: "transcribe", id, samples }, [samples.buffer]);
+  });
+}
 
 class AsyncQueue {
   constructor() {
@@ -160,9 +178,8 @@ app.post("/transcribe", async (req, res) => {
       const samples  = decodeWAV(audioBuf);
       let transcriptText = "";
       if (samples.length > 0) {
-        console.log(`    Transcribing chunk ${chunkIndex}…`);
-        const result   = await transcriber(samples, { sampling_rate: 16000 });
-        transcriptText = (result?.text ?? "").trim();
+        console.log(`    Transcribing chunk ${chunkIndex} (via worker)…`);
+        transcriptText = await transcribeInWorker(samples);
         console.log(`    → "${transcriptText}"`);
       } else {
         console.log(`    (Empty chunk ${chunkIndex} skipped transcription)`);
@@ -250,6 +267,25 @@ app.delete("/transcripts/:id", async (req, res) => {
       try { fs.unlinkSync(audioFileWebm); } catch {}
     }
 
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Delete all transcripts ──────────────────────────────────────────────────────
+app.delete("/transcripts", async (req, res) => {
+  try {
+    const transcripts = await Transcript.find({});
+    for (const transcript of transcripts) {
+      if (transcript.sessionId) {
+        const audioFileWav = path.join(AUDIO_DIR, `${transcript.sessionId}.wav`);
+        const audioFileWebm = path.join(AUDIO_DIR, `${transcript.sessionId}.webm`);
+        try { fs.unlinkSync(audioFileWav); } catch {}
+        try { fs.unlinkSync(audioFileWebm); } catch {}
+      }
+    }
+    await Transcript.deleteMany({});
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
