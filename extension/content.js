@@ -2,6 +2,7 @@
   "use strict";
 
   const SERVER        = "http://localhost:8765";
+  const CONTAINER_ID  = "intraview-record-container";
   const BTN_ID        = "intraview-record-btn";
   const TOAST_ID      = "intraview-toast";
 
@@ -10,6 +11,7 @@
   const LS_PROBLEM_KEY = "iv_problem_desc";
 
   let isRecording   = false;
+  let isPaused      = false;
   let micStream     = null;
   let mediaRecorder = null;
   let pendingBufs   = [];
@@ -138,6 +140,7 @@
     chunkIndex   = 0;
     sessionId    = `iv-${Date.now()}`;
     isRecording  = true;
+    isPaused     = false;
     localStorage.removeItem(LS_CODE_KEY); // clear any stale accepted code from a prior session
 
     // Capture the problem description text at recording-start time
@@ -198,32 +201,89 @@
     if (isRecording) stopRecording(); else startRecording();
   }
 
+  function togglePause() {
+    if (!isRecording || !mediaRecorder) return;
+    if (mediaRecorder.state === "recording") {
+      mediaRecorder.pause();
+      isPaused = true;
+      showToast("Recording paused", "info");
+    } else if (mediaRecorder.state === "paused") {
+      mediaRecorder.resume();
+      isPaused = false;
+      showToast("Recording resumed", "success");
+    }
+    updateButton();
+  }
+
   function updateButton() {
-    const btn = document.getElementById(BTN_ID);
-    if (!btn) return;
+    const mainBtn = document.getElementById(BTN_ID);
+    const pauseBtn = document.getElementById("intraview-pause-btn");
+    const stopBtn = document.getElementById("intraview-stop-btn");
+    if (!mainBtn || !pauseBtn || !stopBtn) return;
+    
     if (isRecording) {
-      btn.classList.add("iv-recording"); btn.title = "Stop recording";
-      btn.querySelector(".iv-btn-label").textContent = "Stop";
+      mainBtn.style.display = "none";
+      pauseBtn.style.display = "inline-flex";
+      stopBtn.style.display = "inline-flex";
+      
+      if (isPaused) {
+        pauseBtn.querySelector(".iv-btn-label").textContent = "Resume";
+        pauseBtn.classList.remove("iv-recording");
+        pauseBtn.classList.add("iv-paused");
+      } else {
+        pauseBtn.querySelector(".iv-btn-label").textContent = "Pause";
+        pauseBtn.classList.remove("iv-paused");
+        pauseBtn.classList.add("iv-recording");
+      }
     } else {
-      btn.classList.remove("iv-recording"); btn.title = "Start voice recording";
-      btn.querySelector(".iv-btn-label").textContent = "IntraView";
+      mainBtn.style.display = "inline-flex";
+      pauseBtn.style.display = "none";
+      stopBtn.style.display = "none";
     }
   }
 
-
-
   function createButton() {
-    if (document.getElementById(BTN_ID)) return;
-    const btn = document.createElement("button");
-    btn.id = BTN_ID; btn.title = "Start voice recording";
-    btn.innerHTML = `<span class="iv-btn-label">IntraView</span>`;
-    btn.addEventListener("click", toggleRecording);
+    if (document.getElementById(CONTAINER_ID)) return;
+    
+    const container = document.createElement("div");
+    container.id = CONTAINER_ID;
+    container.className = "iv-container";
+    container.style.display = "flex";
+    container.style.gap = "8px";
+
+    const mainBtn = document.createElement("button");
+    mainBtn.id = BTN_ID;
+    mainBtn.className = "iv-action-btn";
+    mainBtn.title = "Start voice recording";
+    mainBtn.innerHTML = `<span class="iv-btn-label">IntraView</span>`;
+    mainBtn.addEventListener("click", startRecording);
+
+    const pauseBtn = document.createElement("button");
+    pauseBtn.id = "intraview-pause-btn";
+    pauseBtn.className = "iv-action-btn iv-recording";
+    pauseBtn.style.display = "none";
+    pauseBtn.title = "Pause/Resume recording";
+    pauseBtn.innerHTML = `<span class="iv-btn-label">Pause</span>`;
+    pauseBtn.addEventListener("click", togglePause);
+
+    const stopBtn = document.createElement("button");
+    stopBtn.id = "intraview-stop-btn";
+    stopBtn.className = "iv-action-btn iv-recording";
+    stopBtn.style.display = "none";
+    stopBtn.title = "Stop recording";
+    stopBtn.innerHTML = `<span class="iv-btn-label">Stop</span>`;
+    stopBtn.addEventListener("click", stopRecording);
+
+    container.appendChild(mainBtn);
+    container.appendChild(pauseBtn);
+    container.appendChild(stopBtn);
+
     const sel = ["nav","[class*='NavBar']","[class*='header']","header","#__next nav"];
     for (const s of sel) {
       const t = document.querySelector(s);
-      if (t) { const w=document.createElement("div"); w.className="iv-wrapper"; w.appendChild(btn); t.appendChild(w); return; }
+      if (t) { const w=document.createElement("div"); w.className="iv-wrapper"; w.appendChild(container); t.appendChild(w); return; }
     }
-    btn.classList.add("iv-floating"); document.body.appendChild(btn);
+    container.classList.add("iv-floating"); document.body.appendChild(container);
   }
 
   function showToast(msg, type="info", persist=false) {
@@ -241,7 +301,7 @@
   }
 
   function tryInject() {
-    if (document.getElementById(BTN_ID)) return;
+    if (document.getElementById(CONTAINER_ID)) return;
     if (document.querySelector("nav, header, [class*='NavBar']")) createButton();
   }
 

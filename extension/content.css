@@ -6,7 +6,7 @@
 }
 
 /* ── Core button ── */
-#intraview-record-btn {
+.iv-action-btn {
   position: relative;
   display: inline-flex;
   align-items: center;
@@ -29,14 +29,14 @@
   z-index: 9999;
 }
 
-#intraview-record-btn:hover {
+.iv-action-btn:hover {
   background: linear-gradient(135deg, #23235b 0%, #1b2d5a 100%);
   box-shadow: 0 4px 14px rgba(99, 102, 241, 0.35);
   outline-color: rgba(99, 102, 241, 0.8);
   transform: translateY(-1px);
 }
 
-#intraview-record-btn:active {
+.iv-action-btn:active {
   transform: translateY(0);
   box-shadow: 0 2px 6px rgba(0,0,0,0.3);
 }
@@ -54,20 +54,30 @@
 }
 
 /* ── Recording state ── */
-#intraview-record-btn.iv-recording {
+.iv-action-btn.iv-recording {
   background: linear-gradient(135deg, #3d0a0a 0%, #5c1212 100%);
   outline-color: rgba(239, 68, 68, 0.7);
   box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.15), 0 2px 10px rgba(239, 68, 68, 0.3);
 }
 
-#intraview-record-btn.iv-recording:hover {
+.iv-action-btn.iv-recording:hover {
   background: linear-gradient(135deg, #4a0f0f 0%, #6b1515 100%);
+}
+
+.iv-action-btn.iv-paused {
+  background: linear-gradient(135deg, #422006 0%, #78350f 100%);
+  outline-color: rgba(245, 158, 11, 0.7);
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.15), 0 2px 10px rgba(245, 158, 11, 0.3);
+}
+
+.iv-action-btn.iv-paused:hover {
+  background: linear-gradient(135deg, #78350f 0%, #92400e 100%);
 }
 
 
 
 /* ── Floating fallback (if nav injection fails) ── */
-#intraview-record-btn.iv-floating {
+.iv-container.iv-floating {
   position: fixed;
   top: 72px;
   right: 20px;
