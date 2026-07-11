@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import TranscriptCard from '@/components/TranscriptCard';
+import ConfirmDialog from '@/components/ConfirmDialog';
 import { Button } from '@/components/ui/button';
 import { Mic, FileText, Download, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -25,6 +26,7 @@ export default function Dashboard() {
 
     const [transcripts, setTranscripts] = useState([]);
     const [loading,     setLoading]     = useState(true);
+    const [isDeleteAllOpen, setIsDeleteAllOpen] = useState(false);
     async function fetchTranscripts(isSilent = false) {
         if (!isSilent) setLoading(true);
         try {
@@ -48,7 +50,7 @@ export default function Dashboard() {
     }
 
     async function handleDeleteAll() {
-        if (!window.confirm("Are you sure you want to delete all transcripts? This cannot be undone.")) return;
+        setIsDeleteAllOpen(false);
         try {
             await api.delete('/transcripts');
             setTranscripts([]);
@@ -79,7 +81,7 @@ export default function Dashboard() {
                     <Button
                         variant="destructive"
                         size="sm"
-                        onClick={handleDeleteAll}
+                        onClick={() => setIsDeleteAllOpen(true)}
                         disabled={loading}
                         className="gap-2 bg-red-600 hover:bg-red-700 text-white"
                     >
@@ -129,6 +131,14 @@ export default function Dashboard() {
                     </div>
                 </div>
             )}
+            <ConfirmDialog 
+                isOpen={isDeleteAllOpen} 
+                onClose={() => setIsDeleteAllOpen(false)}
+                onConfirm={handleDeleteAll}
+                title="Delete All Transcripts"
+                description="Are you sure you want to delete all transcripts? This action cannot be undone and will permanently delete all associated audio files."
+                confirmText="Delete All"
+            />
         </div>
     );
 }
