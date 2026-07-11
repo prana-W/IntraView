@@ -35,8 +35,19 @@ function openWebSocket(onReady) {
 
   ws.onopen = () => {
     console.log("[IntraView BG] WebSocket open");
-    ws.send(JSON.stringify({ type: "start" }));
     onReady?.();
+  };
+
+  // ── Route server → extension messages to the active tab ───────────────────
+  ws.onmessage = (event) => {
+    if (!activeTabId) return;
+    try {
+      const msg = JSON.parse(event.data);
+      // Forward AI interview messages to the content script
+      if (["ai_question", "ai_hint", "thinking", "interview_done", "error"].includes(msg.type)) {
+        chrome.tabs.sendMessage(activeTabId, { action: "interview_msg", payload: msg }).catch(() => {});
+      }
+    } catch {}
   };
 
   ws.onerror = () => {
@@ -58,12 +69,16 @@ function openWebSocket(onReady) {
 function closeWebSocket() {
   if (!ws) return;
   if (ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({ type: "stop" }));
     ws.close();
   }
   ws = null;
 }
 
+function sendToServer(payload) {
+  if (ws?.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify(payload));
+  }
+}
 
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -76,7 +91,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     openWebSocket(async () => {
       try {
         await ensureOffscreenDocument();
-  
         chrome.runtime.sendMessage({ action: "startRecognition" }).catch(() => {});
       } catch (err) {
         console.error("[IntraView BG] Offscreen error:", err);
@@ -89,9 +103,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 
   if (action === "stop") {
-
     chrome.runtime.sendMessage({ action: "stopRecognition" }).catch(async () => {
-
       await destroyOffscreenDocument();
     });
     closeWebSocket();
@@ -126,6 +138,30 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         error:  message.error,
       }).catch(() => {});
     }
+    sendResponse({ ok: true });
+    return true;
+  }
+
+  // ── Interview mode messages (content.js → server via background) ───────────
+
+  if (action === "start_interview") {
+    activeTabId = sender.tab?.id;
+    openWebSocket(() => {
+      sendToServer({ type: "start_interview", sessionId: message.sessionId, pageContent: message.pageContent });
+    });
+    sendResponse({ ok: true });
+    return true;
+  }
+
+  if (action === "next_turn") {
+    sendToServer({ type: "next_turn", sessionId: message.sessionId });
+    sendResponse({ ok: true });
+    return true;
+  }
+
+  if (action === "end_interview") {
+    sendToServer({ type: "end_interview", sessionId: message.sessionId });
+    closeWebSocket();
     sendResponse({ ok: true });
     return true;
   }

@@ -307,3 +307,268 @@
   transition: background 0.2s;
 }
 .iv-auth-logout:hover { background: rgba(239,68,68,0.12); }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   INTERVIEW OVERLAY
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+#iv-interview-overlay {
+  position: fixed;
+  top: 80px;
+  right: 20px;
+  width: 340px;
+  background: linear-gradient(145deg, rgba(10, 10, 25, 0.97) 0%, rgba(18, 18, 40, 0.97) 100%);
+  border: 1px solid rgba(99, 102, 241, 0.35);
+  border-radius: 16px;
+  box-shadow:
+    0 24px 60px rgba(0, 0, 0, 0.6),
+    0 0 0 1px rgba(255, 255, 255, 0.04) inset;
+  backdrop-filter: blur(16px);
+  z-index: 2147483647;
+  font-family: "Inter", "Segoe UI", system-ui, sans-serif;
+  color: #e0e0f0;
+  animation: iv-overlay-slide-in 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  overflow: hidden;
+}
+
+@keyframes iv-overlay-slide-in {
+  from { opacity: 0; transform: translateY(-16px) scale(0.96); }
+  to   { opacity: 1; transform: translateY(0)     scale(1);    }
+}
+
+.iv-overlay.iv-overlay-exit,
+#iv-interview-overlay.iv-overlay-exit {
+  animation: iv-overlay-slide-out 0.35s ease forwards;
+}
+
+@keyframes iv-overlay-slide-out {
+  from { opacity: 1; transform: translateY(0)     scale(1); }
+  to   { opacity: 0; transform: translateY(-12px) scale(0.96); }
+}
+
+/* ── Header ──────────────────────────────────────────────────────────────── */
+.iv-overlay-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.iv-overlay-brand {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: rgba(200, 200, 240, 0.7);
+  text-transform: uppercase;
+}
+
+.iv-stage-badge {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  padding: 3px 10px;
+  border-radius: 20px;
+  background: #38bdf8;
+  color: #000;
+  transition: background 0.4s ease, color 0.3s ease;
+}
+
+/* ── Stage progress dots ─────────────────────────────────────────────────── */
+.iv-stage-dots {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px 6px;
+}
+
+.iv-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.15);
+  transition: background 0.3s ease, transform 0.3s ease;
+  cursor: default;
+  flex-shrink: 0;
+}
+
+.iv-dot-active {
+  background: #6366f1;
+  transform: scale(1.35);
+  box-shadow: 0 0 8px rgba(99, 102, 241, 0.6);
+}
+
+.iv-dot-completed {
+  background: rgba(99, 102, 241, 0.4);
+}
+
+/* ── Body (question / thinking) ─────────────────────────────────────────── */
+.iv-overlay-body {
+  padding: 14px 16px 10px;
+  min-height: 72px;
+}
+
+.iv-question-text {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #e8e8f8;
+  font-weight: 500;
+  animation: iv-question-in 0.3s ease forwards;
+}
+
+@keyframes iv-question-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Thinking dots animation ─────────────────────────────────────────────── */
+.iv-thinking {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.iv-thinking span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #6366f1;
+  animation: iv-bounce 1.1s ease-in-out infinite;
+}
+
+.iv-thinking span:nth-child(2) { animation-delay: 0.18s; }
+.iv-thinking span:nth-child(3) { animation-delay: 0.36s; }
+
+.iv-thinking small {
+  font-size: 11px;
+  color: rgba(200, 200, 240, 0.5);
+  margin-left: 4px;
+  font-style: italic;
+}
+
+@keyframes iv-bounce {
+  0%, 80%, 100% { transform: translateY(0);   opacity: 0.4; }
+  40%            { transform: translateY(-6px); opacity: 1;   }
+}
+
+/* ── Footer (timer + action buttons) ────────────────────────────────────── */
+.iv-overlay-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.iv-speaking-timer {
+  font-size: 11px;
+  color: rgba(200, 200, 240, 0.55);
+  font-variant-numeric: tabular-nums;
+  min-width: 52px;
+}
+
+.iv-overlay-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.iv-ov-btn {
+  padding: 5px 12px;
+  border: none;
+  border-radius: 7px;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.1s, opacity 0.2s;
+  white-space: nowrap;
+}
+
+.iv-ov-btn:active { transform: scale(0.96); }
+
+.iv-ov-pause {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(200, 200, 240, 0.8);
+}
+.iv-ov-pause:hover { background: rgba(255, 255, 255, 0.14); }
+.iv-ov-pause.iv-ov-paused { background: rgba(245, 158, 11, 0.2); color: #fbbf24; }
+
+.iv-ov-next {
+  background: linear-gradient(135deg, #4f46e5, #6366f1);
+  color: #fff;
+  box-shadow: 0 2px 10px rgba(99, 102, 241, 0.4);
+}
+.iv-ov-next:hover { opacity: 0.9; }
+
+.iv-ov-end {
+  background: rgba(239, 68, 68, 0.18);
+  color: #fca5a5;
+}
+.iv-ov-end:hover { background: rgba(239, 68, 68, 0.3); }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   HINT CARD (slides in from right)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+#iv-hint-card {
+  position: fixed;
+  bottom: 90px;
+  right: 20px;
+  width: 300px;
+  background: linear-gradient(145deg, rgba(15, 12, 5, 0.97), rgba(30, 25, 5, 0.97));
+  border: 1px solid rgba(251, 191, 36, 0.4);
+  border-radius: 14px;
+  padding: 14px 16px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(251,191,36,0.08) inset;
+  backdrop-filter: blur(12px);
+  z-index: 2147483646;
+  font-family: "Inter", "Segoe UI", system-ui, sans-serif;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  animation: iv-hint-in 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+@keyframes iv-hint-in {
+  from { opacity: 0; transform: translateX(24px) scale(0.95); }
+  to   { opacity: 1; transform: translateX(0)    scale(1);    }
+}
+
+#iv-hint-card.iv-hint-exit {
+  animation: iv-hint-out 0.3s ease forwards;
+}
+
+@keyframes iv-hint-out {
+  from { opacity: 1; transform: translateX(0);    }
+  to   { opacity: 0; transform: translateX(20px); }
+}
+
+.iv-hint-icon {
+  font-size: 18px;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+#iv-hint-card p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: #fde68a;
+  flex: 1;
+}
+
+.iv-hint-close {
+  background: none;
+  border: none;
+  color: rgba(253, 230, 138, 0.5);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+  margin-top: 1px;
+  transition: color 0.2s;
+}
+.iv-hint-close:hover { color: #fde68a; }
+

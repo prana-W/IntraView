@@ -4,10 +4,14 @@ import cors            from "cors";
 import mongoose        from "mongoose";
 import fs              from "fs";
 import path            from "path";
+import http            from "http";
+import { WebSocketServer } from "ws";
 import { fileURLToPath } from "url";
 import { Worker } from "worker_threads";
 
 import Transcript      from "./models/Transcript.js";
+import { InterviewSession } from "./interviewEngine.js";
+import cfg             from "./interview.config.js";
 
 const __dirname       = path.dirname(fileURLToPath(import.meta.url));
 const PORT            = process.env.PORT || 8765;
@@ -95,6 +99,10 @@ function appendToTemp(sessionId, chunkIndex, text) {
   const stamp = `${h}:${m}:${s}`;
   fs.appendFileSync(tempTxtPath(sessionId), `[${stamp}] ${text}\n`, "utf8");
 }
+
+
+// ── Active interview sessions (keyed by sessionId) ───────────────────────────
+const activeSessions = new Map(); // sessionId → InterviewSession
 
 
 const app = express();
@@ -188,6 +196,19 @@ app.post("/transcribe", async (req, res) => {
       // Append to per-session temp file
       if (transcriptText) appendToTemp(sessionId, chunkIndex, transcriptText);
 
+      // ── Feed transcript into the active interview session ──────────────────
+      const session = activeSessions.get(sessionId);
+      if (session && transcriptText) {
+        session.addTranscriptChunk(transcriptText);
+
+        // If accepted code arrives mid-session, inform the engine
+        if (codeSnapshot && !session._codeDelivered) {
+          session._codeDelivered = true;
+          session._pendingCode   = codeSnapshot;
+          console.log(`    📄 Code snapshot delivered to interview session ${sessionId}`);
+        }
+      }
+
       // Delete audio file after transcription
       try { fs.unlinkSync(audioFile); } catch {}
 
@@ -209,15 +230,40 @@ app.post("/transcribe", async (req, res) => {
         if (codeSnapshot) {
           console.log(`    📄 Accepted code snapshot received (${codeSnapshot.length} chars)`);
         }
-        await Transcript.create({
-          sessionId,
-          problemTitle,
-          problemLink:        problemUrl,
-          audioTranscript:    fullText,
-          codeSnapshot,
-          problemDescription,
-        });
-        console.log(`    ✅ Transcript saved to MongoDB (problem: ${problemTitle})\n`);
+
+        // If there is an active interview session, let it handle the DB save
+        const activeSession = activeSessions.get(sessionId);
+        if (activeSession) {
+          // The session will be ended via WS "end_interview" message.
+          // We just store the audioTranscript + codeSnapshot here for completeness.
+          // The session.end() will upsert with interviewTurns when the WS message arrives.
+          await Transcript.findOneAndUpdate(
+            { sessionId },
+            {
+              $set: {
+                sessionId,
+                problemTitle,
+                problemLink:     problemUrl,
+                audioTranscript: fullText,
+                codeSnapshot,
+                problemDescription,
+              },
+            },
+            { upsert: true, new: true }
+          );
+          console.log(`    ✅ Audio transcript upserted for interview session ${sessionId}`);
+        } else {
+          // Legacy (non-interview) mode — save as before
+          await Transcript.create({
+            sessionId,
+            problemTitle,
+            problemLink:        problemUrl,
+            audioTranscript:    fullText,
+            codeSnapshot,
+            problemDescription,
+          });
+          console.log(`    ✅ Transcript saved to MongoDB (problem: ${problemTitle})\n`);
+        }
       }
       
       return { transcript: transcriptText, done: isDone };
@@ -231,19 +277,19 @@ app.post("/transcribe", async (req, res) => {
 });
 
 
-// ── Get all transcripts for the user (protected) ─────────────────────────────
+// ── Get all transcripts for the user ─────────────────────────────────────────
 app.get("/transcripts", async (req, res) => {
   try {
     const transcripts = await Transcript.find({})
       .sort({ createdAt: -1 })
-      .select("sessionId problemTitle problemLink audioTranscript codeSnapshot problemDescription createdAt");
+      .select("sessionId problemTitle problemLink audioTranscript codeSnapshot problemDescription interviewTurns interviewSummary createdAt");
     res.json({ transcripts });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// ── Get single transcript (protected, must belong to user) ────────────────────
+// ── Get single transcript ─────────────────────────────────────────────────────
 app.get("/transcripts/:id", async (req, res) => {
   try {
     const transcript = await Transcript.findById(req.params.id);
@@ -254,7 +300,7 @@ app.get("/transcripts/:id", async (req, res) => {
   }
 });
 
-// ── Delete transcript (protected, must belong to user) ────────────────────────
+// ── Delete transcript ─────────────────────────────────────────────────────────
 app.delete("/transcripts/:id", async (req, res) => {
   try {
     const transcript = await Transcript.findByIdAndDelete(req.params.id);
@@ -273,7 +319,7 @@ app.delete("/transcripts/:id", async (req, res) => {
   }
 });
 
-// ── Delete all transcripts ──────────────────────────────────────────────────────
+// ── Delete all transcripts ────────────────────────────────────────────────────
 app.delete("/transcripts", async (req, res) => {
   try {
     const transcripts = await Transcript.find({});
@@ -292,6 +338,98 @@ app.delete("/transcripts", async (req, res) => {
   }
 });
 
-app.listen(PORT, "0.0.0.0", () => {
-  console.log("Server running on port", PORT);
+
+// ── HTTP server (shared between Express and WebSocket) ───────────────────────
+const httpServer = http.createServer(app);
+
+// ── WebSocket server ──────────────────────────────────────────────────────────
+const wss = new WebSocketServer({ server: httpServer });
+
+wss.on("connection", (ws) => {
+  console.log("[WS] Client connected");
+  let boundSessionId = null;
+
+  ws.on("message", async (raw) => {
+    let msg;
+    try { msg = JSON.parse(raw); } catch { return; }
+
+    switch (msg.type) {
+
+      // ── Extension clicked "IntraView" ──────────────────────────────────────
+      case "start_interview": {
+        const { sessionId, pageContent } = msg;
+        if (!sessionId || !pageContent) {
+          ws.send(JSON.stringify({ type: "error", message: "sessionId and pageContent required" }));
+          return;
+        }
+
+        boundSessionId = sessionId;
+        console.log(`[WS] Starting interview session: ${sessionId}`);
+
+        const session = new InterviewSession(sessionId, ws);
+        activeSessions.set(sessionId, session);
+
+        // Fire-and-forget — responses sent via WebSocket inside session.start()
+        session.start(pageContent).catch(err =>
+          console.error("[WS] session.start error:", err.message)
+        );
+        break;
+      }
+
+      // ── User clicked "➜ Next" ──────────────────────────────────────────────
+      case "next_turn": {
+        const session = activeSessions.get(msg.sessionId ?? boundSessionId);
+        if (!session) {
+          ws.send(JSON.stringify({ type: "error", message: "No active session" }));
+          return;
+        }
+        session.onNextClicked().catch(err =>
+          console.error("[WS] onNextClicked error:", err.message)
+        );
+        break;
+      }
+
+      // ── User clicked "End Interview" ───────────────────────────────────────
+      case "end_interview": {
+        const sid = msg.sessionId ?? boundSessionId;
+        const session = activeSessions.get(sid);
+        if (!session) return;
+
+        session.end(async (sessionId, interviewTurns, interviewSummary) => {
+          await Transcript.findOneAndUpdate(
+            { sessionId },
+            { $set: { interviewTurns, interviewSummary } },
+            { upsert: true }
+          );
+        }).catch(err => console.error("[WS] session.end error:", err.message));
+
+        activeSessions.delete(sid);
+        break;
+      }
+
+      case "ping":
+        ws.send(JSON.stringify({ type: "pong" }));
+        break;
+    }
+  });
+
+  ws.on("close", () => {
+    console.log(`[WS] Client disconnected (session: ${boundSessionId ?? "none"})`);
+    // Clean up session if connection drops unexpectedly
+    if (boundSessionId) {
+      const session = activeSessions.get(boundSessionId);
+      if (session && !session.ended) {
+        session._stopHintTimer?.();
+      }
+      activeSessions.delete(boundSessionId);
+    }
+  });
+
+  ws.on("error", (err) => console.error("[WS] Error:", err.message));
+});
+
+
+httpServer.listen(PORT, "0.0.0.0", () => {
+  console.log(`Server running on port ${PORT}`);
+  console.log(`WebSocket ready at ws://localhost:${PORT}`);
 });

@@ -1,116 +1,132 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, ExternalLink, Copy, Check, Clock, AlertCircle, Trash2, Code2, FileText } from 'lucide-react';
+import { ArrowLeft, ExternalLink, Copy, Check, Clock, AlertCircle, Trash2, Code2, FileText, Bot, Mic2 } from 'lucide-react';
 import { toast } from 'sonner';
 import api, { BASE } from '@/lib/api';
 import ConfirmDialog from '@/components/ConfirmDialog';
 
-const AI_PROMPT_TEMPLATE = (title, transcript, code, problemDesc) =>
-`You are a senior software engineer and technical interviewer at a top-tier tech company (FAANG-level). Your job is to give an HONEST, CRITICAL, and UNBIASED evaluation of a candidate's interview performance. Do NOT be encouraging or diplomatic — your role is to give the kind of blunt, direct feedback that a real interviewer would give internally after the interview. If the candidate performed poorly, say so clearly. If they missed something obvious, call it out directly. Praise should be minimal and only given when genuinely earned.
+/**
+ * Build the AI analysis prompt.
+ * For interview sessions (interviewTurns present): formats as structured Q&A
+ * so the AI evaluates each answer in context of the specific question asked.
+ * For legacy recordings: uses the original flat transcript format.
+ */
+const STAGE_LABELS = {
+  INTRO: 'Introduction', APPROACH: 'Approach', COMPLEXITY: 'Complexity',
+  CODING: 'Coding', REVIEW: 'Code Review', CLOSE: 'Wrap-up',
+};
 
-You will be evaluating the candidate on their verbal explanation of their approach to the following problem:
+function buildInterviewQAText(turns = []) {
+  if (!turns.length) return '';
+  const lines = [];
+  let lastStage = null;
+  turns.forEach(t => {
+    if (t.stage && t.stage !== lastStage) {
+      lines.push(`\n── ${STAGE_LABELS[t.stage] || t.stage} ──`);
+      lastStage = t.stage;
+    }
+    const prefix = t.role === 'ai' ? '🤖 Interviewer' : '👤 Candidate';
+    lines.push(`${prefix}: "${t.text}"`);
+  });
+  return lines.join('\n');
+}
 
-═══════════════════════════════════════════════════════
+const AI_PROMPT_TEMPLATE = (title, transcript, code, problemDesc, interviewTurns) => {
+  const isInterview = interviewTurns && interviewTurns.length > 0;
+  const qaText = isInterview ? buildInterviewQAText(interviewTurns) : null;
+
+  return `You are a senior software engineer and technical interviewer at a top-tier tech company (FAANG-level). Your job is to give an HONEST, CRITICAL, and UNBIASED evaluation of a candidate's interview performance. Do NOT be encouraging or diplomatic. If the candidate performed poorly, say so clearly. Praise should be minimal and only given when genuinely earned.
+
 PROBLEM: ${title}
-═══════════════════════════════════════════════════════
-${problemDesc ? `\n${problemDesc}\n` : '(Problem description not available)'}
-═══════════════════════════════════════════════════════
+${'═'.repeat(55)}
+${problemDesc || '(Problem description not available)'}
+${'═'.repeat(55)}
 
-${code ? `CANDIDATE'S ACCEPTED CODE:\n\`\`\`\n${code}\n\`\`\`\n\n═══════════════════════════════════════════════════════\n` : ''}
-CANDIDATE'S VERBAL TRANSCRIPT (there may be minor transcription errors — use context to infer meaning, but do not excuse poor thinking because of them):
+${code ? `CANDIDATE'S ACCEPTED CODE:\n\`\`\`\n${code}\n\`\`\`\n${'═'.repeat(55)}\n` : ''}${isInterview ? `
+INTERVIEW TRANSCRIPT (structured Q&A — evaluate each candidate response in context of the specific question the interviewer asked):
+${'─'.repeat(55)}
+${qaText}
+${'─'.repeat(55)}
+
+⚠️ IMPORTANT: For each section below, reference WHICH interviewer question the candidate was responding to when making judgements. Score their answer quality relative to that specific question — not just in isolation.
+` : `
+CANDIDATE'S VERBAL TRANSCRIPT (minor transcription errors may exist — use context to infer meaning):
 ---
 ${transcript}
 ---
-
-═══════════════════════════════════════════════════════
+`}
+${'═'.repeat(55)}
 YOUR EVALUATION TASK
-═══════════════════════════════════════════════════════
+${'═'.repeat(55)}
 
-Produce a structured evaluation with ALL of the following sections. Be specific — reference exact parts of the transcript when making judgements.
+Produce a structured evaluation with ALL of the following sections. Be specific — reference exact parts of the transcript.
 
 ---
 
 ## 🧠 SECTION 1 — Problem Comprehension (Score: X/10)
-
-Did the candidate demonstrate they understood the problem correctly?
+${isInterview ? '\n**Evaluate the INTRO stage response**: Did they correctly explain the problem back?' : ''}
 - Did they restate or paraphrase the problem before diving in?
-- Did they identify constraints and their implications (e.g., input size → O(n log n) is fine, O(n²) is not)?
-- Did they ask (or mention) clarifying questions about edge cases, input format, or constraints?
+- Did they identify constraints and their implications?
+- Did they ask (or mention) clarifying questions about edge cases?
 - Did they misunderstand anything?
 
-**Score justification:** [Be specific. A score of 7+ requires demonstrated understanding of constraints.]
+**Score justification:** [Be specific. 7+ requires demonstrated understanding of constraints.]
 
 ---
 
 ## 💡 SECTION 2 — Approach & Algorithm Quality (Score: X/10)
-
-Evaluate the quality of the algorithmic thinking:
-- Did they start with a brute force and then optimize, or jump straight to optimal?
+${isInterview ? '\n**Evaluate the APPROACH stage response**: How well did they answer "walk me through your approach"?' : ''}
+- Did they start with brute force then optimize, or jump straight to optimal?
 - Is their described approach actually correct?
 - Did they identify the right data structures and algorithms?
-- Did they miss a simpler or more optimal solution?
 - Rate the approach: Brute Force / Suboptimal / Optimal / Highly Optimal
 
-**Score justification:** [Penalize heavily for incorrect approaches or missing obvious optimizations.]
+**Score justification:** [Penalize heavily for incorrect approaches.]
 
 ---
 
 ## ⏱️ SECTION 3 — Complexity Analysis (Score: X/10)
-
+${isInterview ? '\n**Evaluate the COMPLEXITY stage response**: Did they correctly answer the complexity question?' : ''}
 - Did they analyze time complexity? Was it correct?
 - Did they analyze space complexity? Was it correct?
-- Did they discuss tradeoffs between time and space?
-- If they gave wrong complexity, what is the correct one and why?
+- Did they discuss tradeoffs?
 
-**Score justification:** [Missing complexity analysis entirely is a major red flag — score ≤ 4.]
+**Score justification:** [Missing complexity analysis entirely → score ≤ 4.]
 
 ---
 
 ## 🗣️ SECTION 4 — Communication & Verbal Clarity (Score: X/10)
-
 - Was the explanation structured and easy to follow?
-- Did they think out loud or were they silent and then just stated a solution?
-- Did they use concrete examples to illustrate their approach?
-- Were there long awkward pauses, repeated contradictions, or confused explanations?
-- Was the pacing appropriate, or did they rush / ramble?
-
-**Score justification:** [In a real interview, poor communication is an immediate concern regardless of correctness.]
-
----
-
-## 🧪 SECTION 5 — Edge Case & Corner Case Awareness (Score: X/10)
-
-- Did they proactively identify edge cases (empty input, single element, all duplicates, negative numbers, overflow, etc.)?
-- Did they handle them in their explanation or code?
-- Did they miss obvious edge cases?
-
-List any edge cases they missed: [Be exhaustive]
+- Did they use concrete examples?
+- Were there long awkward pauses, contradictions, or confused explanations?
 
 **Score justification:**
 
 ---
 
-## 🔍 SECTION 6 — Code Quality (Score: X/10) ${code ? '' : '— N/A (no accepted code submitted)'}
+## 🧪 SECTION 5 — Edge Case & Corner Case Awareness (Score: X/10)
+${isInterview ? '\n**Evaluate the REVIEW stage response**: Did they identify edge cases when asked?' : ''}
+- Did they proactively identify edge cases (empty input, single element, overflow, etc.)?
+- Did they miss obvious edge cases? List them.
 
-${code ? `Evaluate the actual submitted code:
-- Is it clean and readable?
-- Are variable names meaningful?
-- Is there unnecessary complexity or repeated logic?
-- Are there any bugs or potential issues?
-- Does the code match what they verbally described?
-- Is error handling appropriate?
-
-**Score justification:**` : '*Skipped — candidate did not submit an accepted solution during this session.*'}
+**Score justification:**
 
 ---
 
-## 🧩 SECTION 7 — Problem-Solving Process & Structured Thinking (Score: X/10)
+## 🔍 SECTION 6 — Code Quality (Score: X/10) ${code ? '' : '— N/A'}
 
-- Did they follow a logical, structured problem-solving process?
-- Did they break the problem into smaller sub-problems?
-- Did they validate their logic with examples before writing code?
-- Did they course-correct when they made a mistake, or get stuck?
+${code ? `Evaluate the actual submitted code:
+- Is it clean and readable? Variable names meaningful?
+- Any bugs or potential issues?
+- Does the code match what they verbally described?
+
+**Score justification:**` : '*Skipped — no accepted code submitted.*'}
+
+---
+
+## 🧩 SECTION 7 — Problem-Solving Process (Score: X/10)
+- Did they follow a logical structured process?
 - Signs of strong process: restate → example → brute force → optimize → code → verify
 
 **Score justification:**
@@ -118,13 +134,10 @@ ${code ? `Evaluate the actual submitted code:
 ---
 
 ## 💬 SECTION 8 — Interview Presence & Confidence (Score: X/10)
-
-- Did the candidate sound confident and composed, or hesitant and uncertain?
-- Did they hedge excessively ("I think maybe...", "I'm not sure but...")?
+- Confident and composed, or hesitant and uncertain?
 - Did they recover well from mistakes?
-- Would an interviewer feel comfortable with this person representing the team?
 
-**Score justification:** [This is a real evaluation criterion. Excessive self-doubt is penalizing.]
+**Score justification:**
 
 ---
 
@@ -142,41 +155,131 @@ ${code ? `Evaluate the actual submitted code:
 | Interview Presence | X/10 |
 | **OVERALL** | **XX/80** |
 
-**Equivalent Rating:** [Choose one: Strong Hire / Hire / Lean Hire / Lean No-Hire / No-Hire / Strong No-Hire]
+**Equivalent Rating:** [Strong Hire / Hire / Lean Hire / Lean No-Hire / No-Hire / Strong No-Hire]
 
 ---
 
 ## 🚨 CRITICAL MISTAKES & MISSED OPPORTUNITIES
 
-List every significant mistake, missed optimization, gap in explanation, or red flag. Be direct:
+List every significant mistake, missed optimization, gap in explanation, or red flag:
 - [Mistake 1]
-- [Mistake 2]
 - ...
 
 ---
 
 ## ✅ WHAT ACTUALLY WENT WELL
 
-Only list things that were genuinely done well. If nothing was impressive, say so. Do not pad this section.
+Only list genuinely impressive things. Do not pad this section.
 
 ---
 
 ## 📈 CONCRETE IMPROVEMENT PLAN
 
-Give 3–5 specific, actionable steps this candidate should take to improve:
-1. [Specific action with resources/method if applicable]
+Give 3–5 specific, actionable steps:
+1. [Action]
 2. ...
 
 ---
 
 ## 🏁 FINAL VERDICT
 
-Write 2–3 sentences summarizing the overall performance as an interviewer would in their internal debrief. Be direct and honest. Would you pass this candidate to the next round?`;
+2–3 sentences as an interviewer's internal debrief. Would you pass this candidate to the next round?`;
+};
 
 
 /** Convert "binary-tree-inorder-traversal" → "Binary Tree Inorder Traversal" */
 function prettifySlug(slug = '') {
     return slug.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') || 'Unknown Problem';
+}
+
+// Stage colour map (matches interview.config.js)
+const STAGE_COLORS = {
+  INTRO: '#38bdf8', APPROACH: '#a78bfa', COMPLEXITY: '#34d399',
+  CODING: '#fb923c', REVIEW: '#f472b6', CLOSE: '#facc15',
+};
+const ALL_STAGES = ['INTRO', 'APPROACH', 'COMPLEXITY', 'CODING', 'REVIEW', 'CLOSE'];
+
+/** Chat-style interview transcript view */
+function InterviewView({ turns = [], summary }) {
+    let lastStage = null;
+    return (
+        <div className="space-y-3">
+            {summary && (
+                <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 mb-6">
+                    <p className="text-xs font-semibold text-primary/70 uppercase tracking-wider mb-1">AI Post-Interview Summary</p>
+                    <p className="text-sm text-foreground/90 leading-relaxed">{summary}</p>
+                </div>
+            )}
+
+            {/* Stage progress bar */}
+            <div className="flex items-center gap-2 mb-6 flex-wrap">
+                {ALL_STAGES.map(stage => {
+                    const done = turns.some(t => t.stage === stage);
+                    const color = STAGE_COLORS[stage] || '#6366f1';
+                    return (
+                        <div key={stage} className="flex items-center gap-1.5">
+                            <div
+                                className="w-2.5 h-2.5 rounded-full transition-all"
+                                style={{ background: done ? color : 'hsl(var(--muted))' }}
+                            />
+                            <span className="text-xs" style={{ color: done ? color : 'hsl(var(--muted-foreground))' }}>
+                                {STAGE_LABELS[stage]}
+                            </span>
+                        </div>
+                    );
+                })}
+            </div>
+
+            {turns.map((turn, idx) => {
+                const stageChanged = turn.stage && turn.stage !== lastStage;
+                if (stageChanged) lastStage = turn.stage;
+                const isAI   = turn.role === 'ai';
+                const color  = STAGE_COLORS[turn.stage] || '#6366f1';
+
+                return (
+                    <div key={idx}>
+                        {stageChanged && (
+                            <div className="flex items-center gap-3 my-5">
+                                <div className="h-px flex-1 bg-border" />
+                                <span
+                                    className="text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded-full"
+                                    style={{ background: `${color}18`, color, border: `1px solid ${color}40` }}
+                                >
+                                    {STAGE_LABELS[turn.stage] || turn.stage}
+                                </span>
+                                <div className="h-px flex-1 bg-border" />
+                            </div>
+                        )}
+                        <div className={`flex gap-3 ${ isAI ? 'flex-row' : 'flex-row-reverse' }`}>
+                            {/* Avatar */}
+                            <div
+                                className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 mt-0.5"
+                                style={{ background: isAI ? `${color}22` : 'hsl(var(--muted))' }}
+                            >
+                                {isAI
+                                    ? <Bot className="w-4 h-4" style={{ color }} />
+                                    : <Mic2 className="w-4 h-4 text-muted-foreground" />
+                                }
+                            </div>
+                            {/* Bubble */}
+                            <div
+                                className={`max-w-[82%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
+                                    isAI
+                                        ? 'rounded-tl-sm bg-card border border-border text-foreground'
+                                        : 'rounded-tr-sm bg-muted text-foreground/90'
+                                }`}
+                            >
+                                <p className="text-[10px] font-semibold mb-1 opacity-50 uppercase tracking-wider">
+                                    {isAI ? 'Interviewer' : 'You'}
+                                </p>
+                                {turn.text}
+                            </div>
+                        </div>
+                    </div>
+                );
+            })}
+        </div>
+    );
 }
 
 /**
@@ -292,15 +395,17 @@ export default function TranscriptDetail() {
     const handleCopy = useCallback(() => {
         if (!transcript) return;
         const title = prettifySlug(transcript.problemTitle);
+        const isInterview = transcript.interviewTurns?.length > 0;
         const full  = AI_PROMPT_TEMPLATE(
             title,
             transcript.audioTranscript || '(no transcript)',
             transcript.codeSnapshot || '',
-            transcript.problemDescription || ''
+            transcript.problemDescription || '',
+            isInterview ? transcript.interviewTurns : null
         );
         navigator.clipboard.writeText(full).then(() => {
             setCopied(true);
-            toast.success('Copied with AI review prompt! 🚀');
+            toast.success(isInterview ? 'Copied interview Q&A prompt! 🚀' : 'Copied with AI review prompt! 🚀');
             setTimeout(() => setCopied(false), 2500);
         }).catch(() => toast.error('Failed to copy'));
     }, [transcript]);
@@ -542,51 +647,50 @@ export default function TranscriptDetail() {
                 </div>
             )}
 
-            {/* Transcript */}
-            {lines.length === 0 ? (
-                <div className="py-16 text-center text-muted-foreground">
-                    <p>No transcript was recorded for this session.</p>
-                </div>
+            {/* ── Interview mode: chat-style Q&A view ── */}
+            {transcript.interviewTurns?.length > 0 ? (
+                <InterviewView
+                    turns={transcript.interviewTurns}
+                    summary={transcript.interviewSummary}
+                />
             ) : (
-                <div className="space-y-1">
-                    {lines.map((line, idx) => {
-                        const isActive = idx === activeIdx;
-                        return (
-                            <div
-                                key={idx}
-                                ref={el => lineRefs.current[idx] = el}
-                                onClick={() => seekTo(line.seconds)}
-                                className={`group flex gap-4 items-baseline py-2.5 px-3 rounded-lg transition-all duration-300 ${
-                                    line.seconds != null ? 'cursor-pointer' : ''
-                                } ${
-                                    isActive
-                                        ? 'bg-primary/10 border border-primary/20 shadow-sm'
-                                        : 'hover:bg-muted/50 border border-transparent'
-                                }`}
-                                title={line.seconds != null ? `Seek to ${line.timestamp}` : undefined}
-                            >
-                                {/* Timestamp */}
-                                <span
-                                    className={`shrink-0 font-mono text-xs w-16 text-right transition-colors select-none ${
+                /* ── Legacy mode: timestamped transcript ── */
+                lines.length === 0 ? (
+                    <div className="py-16 text-center text-muted-foreground">
+                        <p>No transcript was recorded for this session.</p>
+                    </div>
+                ) : (
+                    <div className="space-y-1">
+                        {lines.map((line, idx) => {
+                            const isActive = idx === activeIdx;
+                            return (
+                                <div
+                                    key={idx}
+                                    ref={el => lineRefs.current[idx] = el}
+                                    onClick={() => seekTo(line.seconds)}
+                                    className={`group flex gap-4 items-baseline py-2.5 px-3 rounded-lg transition-all duration-300 ${
+                                        line.seconds != null ? 'cursor-pointer' : ''
+                                    } ${
                                         isActive
-                                            ? 'text-primary font-semibold'
-                                            : 'text-muted-foreground/60 group-hover:text-primary/70'
+                                            ? 'bg-primary/10 border border-primary/20 shadow-sm'
+                                            : 'hover:bg-muted/50 border border-transparent'
                                     }`}
+                                    title={line.seconds != null ? `Seek to ${line.timestamp}` : undefined}
                                 >
-                                    {line.timestamp || '—'}
-                                </span>
-
-                                {/* Divider */}
-                                <span className={`shrink-0 w-px h-4 self-center transition-colors ${isActive ? 'bg-primary/40' : 'bg-border'}`} />
-
-                                {/* Text */}
-                                <p className={`text-sm leading-relaxed transition-colors ${isActive ? 'text-foreground font-medium' : 'text-foreground/90'}`}>
-                                    {line.text}
-                                </p>
-                            </div>
-                        );
-                    })}
-                </div>
+                                    <span className={`shrink-0 font-mono text-xs w-16 text-right transition-colors select-none ${
+                                        isActive ? 'text-primary font-semibold' : 'text-muted-foreground/60 group-hover:text-primary/70'
+                                    }`}>
+                                        {line.timestamp || '—'}
+                                    </span>
+                                    <span className={`shrink-0 w-px h-4 self-center transition-colors ${isActive ? 'bg-primary/40' : 'bg-border'}`} />
+                                    <p className={`text-sm leading-relaxed transition-colors ${isActive ? 'text-foreground font-medium' : 'text-foreground/90'}`}>
+                                        {line.text}
+                                    </p>
+                                </div>
+                            );
+                        })}
+                    </div>
+                )
             )}
             
             <ConfirmDialog 

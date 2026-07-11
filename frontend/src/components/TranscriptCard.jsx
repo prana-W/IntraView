@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Calendar, ExternalLink, ChevronRight, Trash2 } from 'lucide-react';
+import { Calendar, ExternalLink, ChevronRight, Trash2, Bot } from 'lucide-react';
 import ConfirmDialog from './ConfirmDialog';
 
 /** Convert a slug like "binary-tree-inorder-traversal" to "Binary Tree Inorder Traversal" */
@@ -35,10 +35,15 @@ function getPreview(text = '') {
 export default function TranscriptCard({ transcript, onDelete }) {
     const navigate = useNavigate();
     const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-    
-    const title = prettifySlug(transcript.problemTitle);
-    const preview = getPreview(transcript.audioTranscript);
+
+    const isInterview = (transcript.interviewTurns?.length ?? 0) > 0;
+    const title   = prettifySlug(transcript.problemTitle);
+    // For interview sessions show first AI question; fall back to raw transcript
+    const preview = isInterview
+        ? (transcript.interviewTurns.find(t => t.role === 'ai')?.text ?? '')
+        : getPreview(transcript.audioTranscript);
     const lineCount = transcript.audioTranscript?.split('\n').filter(Boolean).length || 0;
+    const turnCount = transcript.interviewTurns?.length ?? 0;
 
     return (
         <>
@@ -48,9 +53,18 @@ export default function TranscriptCard({ transcript, onDelete }) {
         >
             <CardHeader className="pb-2">
                 <div className="flex items-start justify-between gap-2">
-                    <h3 className="font-semibold text-base leading-snug group-hover:text-primary transition-colors line-clamp-2 min-w-0">
-                        {title}
-                    </h3>
+                    <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                            <h3 className="font-semibold text-base leading-snug group-hover:text-primary transition-colors line-clamp-2">
+                                {title}
+                            </h3>
+                            {isInterview && (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-violet-500/15 text-violet-400 border border-violet-500/25 shrink-0">
+                                    <Bot className="w-2.5 h-2.5" /> Interview
+                                </span>
+                            )}
+                        </div>
+                    </div>
                     <ChevronRight className="w-4 h-4 mt-0.5 text-muted-foreground shrink-0 group-hover:text-primary transition-colors" />
                 </div>
 
@@ -76,12 +90,18 @@ export default function TranscriptCard({ transcript, onDelete }) {
 
             <CardContent className="pt-0">
                 {preview ? (
-                    <p className="text-sm text-muted-foreground leading-relaxed line-clamp-3">{preview}</p>
+                    <p className="text-sm text-muted-foreground leading-relaxed line-clamp-3">
+                        {isInterview && <span className="text-violet-400/70 mr-1">Q:</span>}{preview}
+                    </p>
                 ) : (
                     <p className="text-sm text-muted-foreground italic">No transcript recorded.</p>
                 )}
                 <div className="mt-3 flex items-center justify-between">
-                    {lineCount > 0 ? (
+                    {isInterview ? (
+                        <Badge variant="secondary" className="text-xs border-violet-500/20 text-violet-400">
+                            {turnCount} turn{turnCount !== 1 ? 's' : ''}
+                        </Badge>
+                    ) : lineCount > 0 ? (
                         <Badge variant="secondary" className="text-xs">
                             {lineCount} chunk{lineCount !== 1 ? 's' : ''}
                         </Badge>
